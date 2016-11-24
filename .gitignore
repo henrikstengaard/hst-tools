@@ -1,0 +1,5 @@
+ssl/serial
+ssl/*.key
+ssl/*.cer
+ssl/*.req
+ssl/*.pfx
