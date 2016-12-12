@@ -99,7 +99,6 @@ try
 catch
 {
     Write-Error $_
-    [System.Environment]::Exit(1)
 }
 
 Write-Host "Press enter to continue ..."
