@@ -47,12 +47,13 @@ function IISSiteStart
 		Write-Host $site.ApplicationPool -NoNewline -ForegroundColor White
 		Write-Host "'" -ForegroundColor DarkGray
 
+		Start-WebSite $site.Name
+
 		if((Get-WebAppPoolState $site.ApplicationPool).Value -ne 'Started')
 		{
 			Start-WebAppPool -Name $site.ApplicationPool
 		}
 	}
-
 }
 
 # Use try catch block to ensure script exits with error code, if it fails
