@@ -1,8 +1,8 @@
-# IIS List
-# --------
+# IIS Site List
+# -------------
 # Author: Henrik Nørfjand Stengaard
 # Company: First Realize
-# Date: 2016-12-01
+# Date: 2016-12-13
 
 # Powershell script to list running IIS sites with process id for application pool. Following parameters can be used:
 # -full: Display full information about IIS site with physical path, application pool and bindings.
@@ -12,7 +12,9 @@ Param(
 	[Parameter(Mandatory=$false)]
 	[switch]$all,
 	[Parameter(Mandatory=$false)]
-	[switch]$full
+	[switch]$full,
+	[Parameter(Mandatory=$false)]
+	[switch]$pause	
 )
 
 $scriptPath = split-path -parent $MyInvocation.MyCommand.Definition
@@ -20,7 +22,7 @@ $scriptPath = split-path -parent $MyInvocation.MyCommand.Definition
 # elevate script, if not run as administrator
 if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))
 {   
-	$arguments = "& '" + $myinvocation.mycommand.definition + "'"
+	$arguments = "& '" + $myinvocation.mycommand.definition + "' -pause"
 
 	if ($all)
 	{
@@ -35,7 +37,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 	break
 }
 
-function IIS-List
+function IISSiteList
 {
 	Import-Module Webadministration
 
@@ -86,20 +88,21 @@ function IIS-List
 				Write-Host "'" -ForegroundColor DarkGray
 			}
 		}
-
-		Write-Host ""
 	}
 }
 
 # Use try catch block to ensure script exits with error code, if it fails
 try
 {
-	IIS-List
+	IISSiteList
 }
 catch
 {
     Write-Error $_
 }
 
-Write-Host "Press enter to continue ..."
-Read-Host
+if ($pause)
+{
+	Write-Host "Press enter to continue ..."
+	Read-Host
+}
