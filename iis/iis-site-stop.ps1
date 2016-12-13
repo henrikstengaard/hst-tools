@@ -54,7 +54,6 @@ function IISSiteStop
 			Stop-WebAppPool -Name $site.ApplicationPool
 		}
 	}
-
 }
 
 # Use try catch block to ensure script exits with error code, if it fails
