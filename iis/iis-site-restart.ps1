@@ -68,8 +68,8 @@ catch
 
 if ($pause)
 {
-	Write-Host "Press any key to continue ..."
-	$host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") | Out-Null
+	Write-Host "Press enter to continue ..."
+	Read-Host
 }
 
 
