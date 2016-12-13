@@ -46,3 +46,12 @@ Example: Stop IIS site and application pool at current directory.
 
 ###
     > iis-site-stop.ps1
+
+## IIS-Site-Restart
+
+A powershell script to restart IIS Site and application pool with physical path matching current directory.
+
+Example: Restart IIS site and application pool at current directory.
+
+###
+    > iis-site-restart.ps1
