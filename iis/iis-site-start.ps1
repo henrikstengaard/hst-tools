@@ -36,7 +36,6 @@ function IISSiteStart
 	if (!$site)
 	{
 		Write-Host "No IIS sites configured with current path '$currentDirectory'" -ForegroundColor Red
-		exit 1
 	}
 	else 
 	{
