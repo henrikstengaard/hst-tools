@@ -14,7 +14,7 @@ Param(
 
 
 # template for building solution file
-$solutionTemplateText = @"
+$solutionTemplateText = @'
 
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 14
@@ -36,7 +36,7 @@ Global
 		HideSolutionNode = FALSE
 	EndGlobalSection
 EndGlobal
-"@
+'@
 
 # get csproj files
 $csprojFiles = @()
@@ -61,8 +61,8 @@ foreach ($csprojFile in $csprojFiles)
 }
 
 # replace solution template placeholders
-$solutionTemplateText = $solutionTemplateText.Replace("[$Projects]", $projectsLines -join [System.Environment]::NewLine)
-$solutionTemplateText = $solutionTemplateText.Replace("[$ProjectConfigurationId]", $projectConfigurationId)
+$solutionTemplateText = $solutionTemplateText.Replace('[$ProjectConfigurationId]', $projectConfigurationId)
+$solutionTemplateText = $solutionTemplateText.Replace('[$Projects]', $projectsLines -join [System.Environment]::NewLine)
 
 # write solution file
 [System.IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($solutionFile), $solutionTemplateText)
