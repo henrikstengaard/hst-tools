@@ -1,11 +1,19 @@
-# Build Rewrites
-# --------------
+# Build and check redirects
+# -------------------------
+#
 # Author: Henrik Nørfjand Stengaard
 # Company: First Realize
-# Date: 2017-03-23
-
-# Powershell script to build rewrites web.config for IIS. Following parameters can be used:
-# -redirectsCsvFile "redirects.csv"
+# Date: 2017-03-27
+#
+# A Powershell script to build redirects web.config for IIS and can check status of redirect and new urls after web.config is deployed. 
+# Following parameters can be used:
+# -redirectsCsvFile "[FILE.CSV]" (Required): Comma-separated file with redirects containing "OldUrl" and "NewUrl" columns.
+# -redirectsReportCsvFile "[FILE.CSV]" (Optional): Comma-separated report file generated for building and checking redirects. If not defined, report file will be same as redirects csv file with ".report.csv" appended.
+# -buildRedirectsWebConfig (Optional): Switch to enable build redirects web config.
+# -redirectsWebConfigFile "[WEB.CONFIG]" (Optional): Output redirects web config file for IIS. If not defined, redirects web config file will be same as redirects csv file with ".web.config" appended.
+# -checkNewUrls (Optional): Switch to enable checking new urls in redirects csv file.
+# -redirectTestDomain "http://www.example.com/" (Optional): Domain to check old url redirects. This will replace the domain in old urls in redirects csv file. If not defined, old url is used to check redirect.
+# -checkRedirectUrls (Optional): Switch to enable checking old urls in redirects csv file.
 
 
 Param(
@@ -14,9 +22,9 @@ Param(
 	[Parameter(Mandatory=$false)]
 	[string]$redirectsReportCsvFile,
 	[Parameter(Mandatory=$false)]
-	[string]$rewritesWebConfigFile,
+	[switch]$buildRedirectsWebConfig,
 	[Parameter(Mandatory=$false)]
-	[switch]$buildRewritesWebConfig,
+	[string]$redirectsWebConfigFile,
 	[Parameter(Mandatory=$false)]
 	[switch]$checkNewUrls,
 	[Parameter(Mandatory=$false)]
@@ -26,6 +34,7 @@ Param(
 )
 
 
+# execute request
 function ExecuteRequest
 {
     Param(
@@ -55,8 +64,8 @@ function ExecuteRequest
 }
 
 
-# rewrites web config template
-$rewriteWebConfigTemplate = @'
+# redirects web config template
+$redirectsWebConfigTemplate = @'
 <configuration>
     <system.webServer>
         <rewrite>
@@ -82,7 +91,22 @@ if (!$redirectsReportCsvFile)
 {
     $redirectsReportCsvFile = $redirectsCsvFile + '.report.csv'
 }
-$redirectsReportCsvFile
+
+
+# default redirects web config file
+if ($buildRedirectsWebConfig -and !$redirectsWebConfigFile)
+{
+    $redirectsWebConfigFile = $redirectsCsvFile + '.web.config'
+}
+
+
+# fail, if redirects csv file doesn't exist
+if (!(test-path $redirectsCsvFile))
+{
+    Write-Error "Redirects csv file '$redirectsCsvFile' doesn't exist"
+    exit 1
+}
+
 
 # read redirects csv file
 $redirects = @()
@@ -90,7 +114,8 @@ $redirects += Import-Csv -Delimiter ';' $redirectsCsvFile | Foreach-Object { @{ 
 
 
 # process redirects
-Write-Host ("Processing " + $redirects.Count + " redirects...")
+Write-Host ("Processing " + $redirects.Count + " redirects...") -ForegroundColor "Green"
+
 foreach ($redirect in $redirects)
 {
     $redirect.UrlsValid = $false
@@ -116,15 +141,15 @@ foreach ($redirect in $redirects)
 }
 
 
-# sort redirects by redirect path, so most specific redirects comes first
+# sort redirects by redirect path, so most specific redirects comes first and make list unique
 $redirectsSortedByRedirectPath = $redirects | Sort-Object @{expression={$_.RedirectPath};Ascending=$false} -Unique
 
 
-# build rewrites web config 
-if ($buildRewritesWebConfig)
+# build redirects web config 
+if ($buildRedirectsWebConfig)
 {
-    $rewriteWebConfig = $rewriteWebConfigTemplate -f (($redirectsSortedByRedirectPath | Where-Object { $_.UrlsValid } | Foreach-Object { $rewriteRuleTemplate -f [guid]::NewGuid(), ('^' + $_.RedirectPath), $_.NewUrl }) -join [System.Environment]::NewLine)
-    $rewriteWebConfig | Out-File -filepath $rewritesWebConfigFile
+    $redirectsWebConfig = $redirectsWebConfigTemplate -f (($redirectsSortedByRedirectPath | Where-Object { $_.UrlsValid } | Foreach-Object { $rewriteRuleTemplate -f [guid]::NewGuid(), ('^' + $_.RedirectPath), $_.NewUrl }) -join [System.Environment]::NewLine)
+    $redirectsWebConfig | Out-File -filepath $redirectsWebConfigFile
 }
 
 
@@ -133,8 +158,17 @@ if ($checkNewUrls)
 {
     foreach ($redirect in $redirects)
     {
+        # skip, if urls aren't valid
+        if (!$redirect.UrlsValid)
+        {
+            $redirect.NewUrlStatus = 'Warning: Url''s not valid, skipped!'
+            continue
+        }
+
+        # execute request to check new url
         $response = ExecuteRequest -url $redirect.NewUrl
 
+        # add new url status column with response status code
         $redirect.NewUrlStatus = $response.StatusCode
     }
 }
@@ -145,30 +179,41 @@ if ($checkRedirectUrls)
 {
     foreach ($redirect in $redirectsSortedByRedirectPath)
     {
-        $redirectTestUrl = ($redirectTestDomain + $redirect.RedirectPath)
-
-        $redirect.RedirectTestUrl = $redirectTestUrl
-
-        if ($redirect.UrlsValid)
+        # skip, if urls aren't valid
+        if (!$redirect.UrlsValid)
         {
-            $response = ExecuteRequest -url $redirectTestUrl
+            $redirect.RedirectTestUrlStatus = 'Warning: Url''s not valid, skipped!'
+            continue
+        }
 
-            if ($redirect.NewUrl -eq $response.Location)
-            {
-                $redirect.RedirectTestUrlStatus = "OK"
-            }
-            elseif (!$response.Location -or $response.Location -eq '')
-            {
-                $redirect.RedirectTestUrlStatus = ("Error: No redirect with status code " + $response.StatusCode)
-            }
-            else
-            {
-                $redirect.RedirectTestUrlStatus = ("Error: Redirected to '" + $response.Location + "'")
-            }
+        # build redirect test url from redirect test domain and redirect path, if redirect test domain is defined. Otherwise use old url.
+        if ($redirectTestDomain)
+        {
+            $redirectTestUrl = ($redirectTestDomain + $redirect.RedirectPath)
         }
         else
         {
-            $redirect.RedirectTestUrlStatus = 'Warning: Url''s not valid, skipped!'
+            $redirectTestUrl = $redirect.OldUrl
+        }
+
+        # add redirect test url column
+        $redirect.RedirectTestUrl = $redirectTestUrl
+
+        # execute request to check redirect test url
+        $response = ExecuteRequest -url $redirectTestUrl
+
+        # add redirect test url status column with redirect result
+        if ($redirect.NewUrl -eq $response.Location)
+        {
+            $redirect.RedirectTestUrlStatus = "OK"
+        }
+        elseif (!$response.Location -or $response.Location -eq '')
+        {
+            $redirect.RedirectTestUrlStatus = ("Error: No redirect with status code " + $response.StatusCode)
+        }
+        else
+        {
+            $redirect.RedirectTestUrlStatus = ("Error: Redirected to '" + $response.Location + "'")
         }
     }
 }
@@ -176,3 +221,6 @@ if ($checkRedirectUrls)
 
 # write redirects report csv file
 $redirects | ForEach-Object { New-Object PSObject -Property $_ } | export-csv -delimiter ';' -path $redirectsReportCsvFile -NoTypeInformation -Encoding UTF8
+
+# done
+Write-Host "Done" -ForegroundColor "Green"
