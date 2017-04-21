@@ -2,7 +2,7 @@
 # ------------------------
 #
 # Author: Henrik Nørfjand Stengaard
-# Date:   2016-11-24
+# Date:   2017-04-21
 #
 # A PowerShell script to generate self-signed SSL certificates issued by generated CA certificate to avoid warnings in browsers and on mobile devices.
 #
@@ -76,7 +76,6 @@ if (!(test-path -path $opensslLocalConfigFile))
 }
 
 
-
 # print openssl bin path
 Write-Host "------------------------"
 Write-Host "Generate SSL Certificate"
@@ -85,12 +84,37 @@ Write-Host ""
 Write-Host "Using openssl bin path '$opensslBinPath'."
 
 
+# build alt names for domain openssl config
+$altNames = @()
+if ($domain -match '^\*.')
+{
+	$altNames += "DNS.{0} = {1}" -f ($altNames.Count + 1), ($domain -replace '^\*.', '')
+}
+$altNames += "DNS.{0} = {1}" -f ($altNames.Count + 1), $domain
+
+
+# create domain openssl config
+$domainOpensslConfigFile = [System.IO.Path]::Combine($scriptPath, $name + " openssl.cfg")
+Write-Host ""
+Write-Host "Creating domain openssl cfg '$domainOpensslConfigFile' for '$name'..."
+$domainOpensslConfig = [System.IO.File]::ReadAllText($opensslLocalConfigFile)
+$domainOpensslConfig = $domainOpensslConfig -replace '\[\$Domain\]', $domain
+$domainOpensslConfig = $domainOpensslConfig -replace '\[\$AltNames\]', ($altNames -Join "`n")
+[System.IO.File]::WriteAllText($domainOpensslConfigFile, $domainOpensslConfig)
+Write-Host "Done."
+
+
 # create ca private key file
 $caKeyFile = [System.IO.Path]::Combine($scriptPath, $name + " CA.key")
 Write-Host ""
 Write-Host "Creating CA private key '$caKeyFile' for '$name'..."
 $opensslArgs = "genrsa -out ""$caKeyFile"" 2048"
-Start-Process $opensslExeFile $opensslArgs -Wait -Passthru -NoNewWindow
+$process = Start-Process $opensslExeFile $opensslArgs -Wait -Passthru -NoNewWindow
+if ($process.ExitCode -ne 0)
+{
+	Write-Error "Failed to run '$opensslExeFile' with args '$opensslArgs'"
+	exit 1
+}
 Write-Host "Done."
 
 
@@ -98,8 +122,13 @@ Write-Host "Done."
 Write-Host ""
 Write-Host "Creating CA certificate for '$name'..."
 $caCerFile = [System.IO.Path]::Combine($scriptPath, $name + " CA.cer")
-$opensslArgs = "req -x509 -sha256 -new -key ""$caKeyFile"" -out ""$caCerFile"" -days 730 -subj /CN=""$name CA"" -config ""$opensslConfigFile"""
-Start-Process $opensslExeFile $opensslArgs -Wait -Passthru -NoNewWindow
+$opensslArgs = "req -x509 -sha256 -new -key ""$caKeyFile"" -out ""$caCerFile"" -days 1825 -subj /CN=""$name CA"" -config ""$opensslConfigFile"""
+$process = Start-Process $opensslExeFile $opensslArgs -Wait -Passthru -NoNewWindow
+if ($process.ExitCode -ne 0)
+{
+	Write-Error "Failed to run '$opensslExeFile' with args '$opensslArgs'"
+	exit 1
+}
 Write-Host "Done."
 
 
@@ -108,7 +137,12 @@ Write-Host ""
 $domainKeyFile = [System.IO.Path]::Combine($scriptPath, $name + ".key")
 Write-Host "Creating domain private key '$domainKeyFile' for '$domain'..."
 $opensslArgs = "genrsa -out ""$domainKeyFile"" 2048"
-Start-Process $opensslExeFile $opensslArgs -Wait -Passthru -NoNewWindow
+$process = Start-Process $opensslExeFile $opensslArgs -Wait -Passthru -NoNewWindow
+if ($process.ExitCode -ne 0)
+{
+	Write-Error "Failed to run '$opensslExeFile' with args '$opensslArgs'"
+	exit 1
+}
 Write-Host "Done."
 
 
@@ -116,8 +150,13 @@ Write-Host "Done."
 Write-Host ""
 $domainReqFile = [System.IO.Path]::Combine($scriptPath, $name + ".req")
 Write-Host "Creating domain certificate signing request '$domainReqFile' for '$domain'..."
-$opensslArgs = "req -new -out ""$domainReqFile"" -key ""$domainKeyFile"" -subj /CN=""$domain"" -config ""$opensslConfigFile"""
-Start-Process $opensslExeFile $opensslArgs -Wait -Passthru -NoNewWindow
+$opensslArgs = "req -new -out ""$domainReqFile"" -key ""$domainKeyFile"" -subj /CN=""$domain"" -config ""$domainOpensslConfigFile"""
+$process = Start-Process $opensslExeFile $opensslArgs -Wait -Passthru -NoNewWindow
+if ($process.ExitCode -ne 0)
+{
+	Write-Error "Failed to run '$opensslExeFile' with args '$opensslArgs'"
+	exit 1
+}
 Write-Host "Done."
 
 
@@ -125,9 +164,13 @@ Write-Host "Done."
 Write-Host ""
 $domainCerFile = [System.IO.Path]::Combine($scriptPath, $name + ".cer")
 Write-Host "Creating domain certificate '$domainCerFile' for '$domain' issued by '$domain CA' certificate..."
-$opensslArgs = "x509 -req -sha256 -in ""$domainReqFile"" -out ""$domainCerFile"" -CAkey ""$caKeyFile"" -CA ""$caCerFile"" -days 365 -CAcreateserial -CAserial serial"
-# -extfile ""$opensslLocalConfigFile"" -extensions server_cert
-Start-Process $opensslExeFile $opensslArgs -Wait -Passthru -NoNewWindow
+$opensslArgs = "x509 -req -sha256 -in ""$domainReqFile"" -out ""$domainCerFile"" -CAkey ""$caKeyFile"" -CA ""$caCerFile"" -days 1825 -CAcreateserial -CAserial serial -extfile ""$domainOpensslConfigFile"" -extensions v3_req"
+$process = Start-Process $opensslExeFile $opensslArgs -Wait -Passthru -NoNewWindow
+if ($process.ExitCode -ne 0)
+{
+	Write-Error "Failed to run '$opensslExeFile' with args '$opensslArgs'"
+	exit 1
+}
 Write-Host "Done."
 
 
@@ -137,5 +180,10 @@ $domainPfxFile = [System.IO.Path]::Combine($scriptPath, $name + ".pfx")
 Write-Host "Creating domain personal information exchange '$domainPfxFile' for IIS..."
 Write-Host "Enter password for certificate:"
 $opensslArgs = "pkcs12 -export -out ""$domainPfxFile"" -inkey ""$domainKeyFile"" -in ""$domainCerFile"""
-Start-Process $opensslExeFile $opensslArgs -Wait -Passthru -NoNewWindow
+$process = Start-Process $opensslExeFile $opensslArgs -Wait -Passthru -NoNewWindow
+if ($process.ExitCode -ne 0)
+{
+	Write-Error "Failed to run '$opensslExeFile' with args '$opensslArgs'"
+	exit 1
+}
 Write-Host "Done."
