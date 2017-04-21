@@ -53,7 +53,7 @@ Running generate_ssl_certificate.ps1 script will generate following files:
 * "[name].cer": Domain certificate.
 * "[name].pfx": Personal information exchange export of domain certificate. 
 
-## CA Certificate Installation in Windows 10
+## Install CA Certificate in Windows 10
 
 Install CA certificate in Windows with following steps:
 
@@ -64,15 +64,53 @@ Install CA certificate in Windows with following steps:
 5. Click "Browse", select "Trusted Root Certification Authorities" and click "Next".
 6. Click "Finish".
 
-## Domain Certificate Installation in IIS 10
+CA certificate is now trusted on Windows 10.
 
-Install domain certificate in IIS with following steps:
+## Install Domain Certificate in Windows 10 for IIS
 
-1. Open "IIS Manager".
-2. In connection (left pane), click your "computer name", Server Certificates in IIS feature list (middle pane).
-3. Click "Import" in right pane.
-4. Click "..." and select "[name].pfx" personal information exchange file for domain.
-5. Enter password identical to password entered when running generate_ssl_certificate.ps1 script.
-6. Click "OK".
+Install Domain Certificate in Windows with following steps:
+
+1. Double-click on "[name].pfx" CA certificate file in Windows Explorer. 
+2. Select "Local Machine" and click "Next".
+3. Click "Next" for File To Import.
+4. Enter password for certificate, which was used to create personal information exchange .pfx for IIS.
+5. Check "Mark this key as exportable.". 
+6. Select "Place all certificate in the following store".
+7. Click "Browse", select "Personal" and click "Next".
+8. Click "Finish".
 
 Domain certificate can now be used when adding bindings for a website in IIS.
+
+## Install CA Certificate in Mac OSX
+
+Install CA certificate on Mac OSX with the following steps:
+
+1. Double-click on "[name] CA.cer" CA certificate file in Finder.
+2. Enter current user password to install CA certificate in Keychain.
+3. Double-click on "[name] CA" certificate.
+4. Expand Trust and select Always trust for "When using this certificate".
+5. Enter current user password to install CA certificate to always trust CA certificate.
+
+CA certificate is now trusted on Mac OSX.
+
+## Install CA Certificate in iOS
+
+Install CA certificate on iOS with the following steps:
+
+1. Tab on the CA certificate file send as an attachment to a mail.
+2. Certificate overview is shown, tab "Install" in upper right corner.
+3. Certificate warning is shown, tab "Install" in upper right corner.
+4. Tab "Install" in bottom popup menu.
+5. Tab "Done" in upper right corner.
+
+## Import CA Certificate in Firefox
+
+Import CA Certificate in Firefox with following steps:
+
+1. Open menu and options in Firefox.
+2. Click "Advanced", "Certificates" and "View Certificates".
+3. Click "Authorities" and "Import".
+4. Check "Trust this CA to identify web sites.".
+5. Click "OK".
+
+Firefox will now trust the CA Certificate.
