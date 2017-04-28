@@ -148,7 +148,7 @@ $redirectsSortedByRedirectPath = $redirects | Sort-Object @{expression={$_.Redir
 # build redirects web config 
 if ($buildRedirectsWebConfig)
 {
-    $redirectsWebConfig = $redirectsWebConfigTemplate -f (($redirectsSortedByRedirectPath | Where-Object { $_.UrlsValid } | Foreach-Object { $rewriteRuleTemplate -f [guid]::NewGuid(), ('^' + $_.RedirectPath), $_.NewUrl }) -join [System.Environment]::NewLine)
+    $redirectsWebConfig = $redirectsWebConfigTemplate -f (($redirectsSortedByRedirectPath | Where-Object { $_.UrlsValid } | Foreach-Object { $rewriteRuleTemplate -f [guid]::NewGuid(), ('^' + $_.RedirectPath), $_.NewUrl -replace '&', '&amp;' }) -join [System.Environment]::NewLine)
     $redirectsWebConfig | Out-File -filepath $redirectsWebConfigFile
 }
 
