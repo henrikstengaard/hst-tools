@@ -11,6 +11,88 @@ Param(
     [String]$buildModules
 )
 
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+# find zip entry file
+function FindZipEntryFile($zipFile, $entryName)
+{
+    # open zip archive
+    $zipArchive = [System.IO.Compression.ZipFile]::Open($zipFile,"Read")
+    $zipArchiveEntry = $zipArchive.Entries | Where-Object { $_.FullName -match $entryName } | Select-Object -First 1
+
+    # close zip archive
+    $zipArchive.Dispose()
+
+    # return null, if zip archive entry doesn't exist
+    if (!$zipArchiveEntry)
+    {
+        return $null
+    }
+
+    return $zipArchiveEntry.FullName
+}
+
+# read zip entry text file
+function ReadZipEntryTextFile($zipFile, $entryName)
+{
+    # open zip archive
+    $zipArchive = [System.IO.Compression.ZipFile]::Open($zipFile,"Read")
+    $zipArchiveEntry = $zipArchive.Entries | Where-Object { $_.FullName -match $entryName } | Select-Object -First 1
+
+    # return null, if zip archive entry doesn't exist
+    if (!$zipArchiveEntry)
+    {
+        $zipArchive.Dispose()
+        return $null
+    }
+
+    # open zip archive entry stream
+    $entryStream = $zipArchiveEntry.Open()
+    $streamReader = New-Object System.IO.StreamReader($entryStream)
+
+    # read text from stream
+    $text = $streamReader.ReadToEnd()
+
+    # close streams
+    $streamReader.Close()
+    $streamReader.Dispose()
+
+    # close zip archive
+    $zipArchive.Dispose()
+    
+    return $text
+}
+
+# write zip entry text file
+function WriteZipEntryTextFile($zipFile, $entryName, $text)
+{
+    # open zip archive
+    $zipArchive = [System.IO.Compression.ZipFile]::Open($zipFile,"Update")
+
+    # delete existing entry, if it exists
+    $zipArchiveEntry = $zipArchive.Entries | Where-Object { $_.FullName -match $entryName } | Select-Object -First 1
+    if ($zipArchiveEntry)
+    {
+        $zipArchiveEntry.Delete()
+    }
+
+    # create entry
+    $zipArchiveEntry = $zipArchive.CreateEntry($entryName)
+
+    # open zip archive entry stream
+    $entryStream = $zipArchiveEntry.Open()
+    $streamWriter = New-Object System.IO.StreamWriter($entryStream)
+
+    $streamWriter.Write($text)
+
+    # close streams
+    $streamWriter.Close()
+    $streamWriter.Dispose()
+
+    # close zip archive
+    $zipArchive.Dispose()
+}
+
 # Use try catch block to ensure script exits with error code, if it fails
 try
 {
@@ -153,6 +235,36 @@ try
         }
 
         Write-Output ""
+    }
+
+    # patch dependencies, if branch is not release or master
+    if ($branch -notmatch '^(release|master)')
+    {
+        # get nupkg files
+        $nupkgFiles = @()
+        $nupkgFiles += Get-ChildItem -Path $tempNugetOutputDir -filter *.nupkg
+
+        foreach($nupkgFile in $nupkgFiles)
+        {
+            # find nuspec file in nupkg file
+            $nuspecFile = FindZipEntryFile $nupkgFile.FullName '\.nuspec$'
+
+            # read nuspec text file from nupkg file
+            $nuspecText = ReadZipEntryTextFile $nupkgFile.FullName $nuspecFile
+
+            # fail, if nupkg file doesn't contain nuspec
+            if (!$nuspecText)
+            {
+                Write-Error ("Nupkg file '{0}' doesn't contain nuspec" -f $nupkgFile.FullName)
+                exit 1
+            }
+
+            # patch dependencies to exact version
+            $nuspecText = $nuspecText -replace "<dependency id=""([^""]+)"" version=""([^""]+$branch\d*)""", "<dependency id=""`$1"" version=""[`$2,`$2]"""
+
+            # write nuspec text to nupkg file
+            WriteZipEntryTextFile $nupkgFile.FullName $nuspecFile $nuspecText
+        }
     }
 
     # copy temp nuget output directory files to nuget output directory 
