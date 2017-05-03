@@ -3,17 +3,18 @@
 #
 # Author: Henrik Nørfjand Stengaard
 # Company: First Realize
-# Date: 2017-03-27
+# Date: 2017-05-03
 #
 # A Powershell script to build redirects web.config for IIS and can check status of redirect and new urls after web.config is deployed. 
 # Following parameters can be used:
 # -redirectsCsvFile "[FILE.CSV]" (Required): Comma-separated file with redirects containing "OldUrl" and "NewUrl" columns.
 # -redirectsReportCsvFile "[FILE.CSV]" (Optional): Comma-separated report file generated for building and checking redirects. If not defined, report file will be same as redirects csv file with ".report.csv" appended.
+# -oldUrlDomain "http://www.example.com/" (Optional): This will replace the old urls domain in redirects csv file, if defined.
+# -newUrlDomain "http://www.example.com/" (Optional): This will replace the new urls domain in redirects csv file, if defined.
 # -buildRedirectsWebConfig (Optional): Switch to enable build redirects web config.
 # -redirectsWebConfigFile "[WEB.CONFIG]" (Optional): Output redirects web config file for IIS. If not defined, redirects web config file will be same as redirects csv file with ".web.config" appended.
 # -checkNewUrls (Optional): Switch to enable checking new urls in redirects csv file.
-# -redirectTestDomain "http://www.example.com/" (Optional): Domain to check old url redirects. This will replace the domain in old urls in redirects csv file. If not defined, old url is used to check redirect.
-# -checkRedirectUrls (Optional): Switch to enable checking old urls in redirects csv file.
+# -checkOldUrls (Optional): Switch to enable checking old urls in redirects csv file.
 
 
 Param(
@@ -22,15 +23,17 @@ Param(
 	[Parameter(Mandatory=$false)]
 	[string]$redirectsReportCsvFile,
 	[Parameter(Mandatory=$false)]
+	[string]$oldUrlDomain,
+	[Parameter(Mandatory=$false)]
+	[string]$newUrlDomain,
+	[Parameter(Mandatory=$false)]
 	[switch]$buildRedirectsWebConfig,
 	[Parameter(Mandatory=$false)]
 	[string]$redirectsWebConfigFile,
 	[Parameter(Mandatory=$false)]
 	[switch]$checkNewUrls,
 	[Parameter(Mandatory=$false)]
-	[string]$redirectTestDomain,
-	[Parameter(Mandatory=$false)]
-	[switch]$checkRedirectUrls
+	[switch]$checkOldUrls
 )
 
 
@@ -49,12 +52,17 @@ function ExecuteRequest
 
     try {
         $response = $request.GetResponse()
-        $statusCode = $response.StatusCode
+        $statusCode = [int]$response.StatusCode
         $location = $response.Headers["Location"]
     }
     catch [System.Net.WebException] {
         $response = $_.Exception.Response
-        $statusCode = $response.StatusCode
+        $statusCode = [int]$response.StatusCode
+    }
+
+    if (!$location)
+    {
+        $location = ''
     }
 
     $response.Close()
@@ -81,7 +89,7 @@ $redirectsWebConfigTemplate = @'
 $rewriteRuleTemplate = @'
 <rule name="{0}" stopProcessing="true">
     <match url="{1}" />
-    <action type="Redirect" url="{2}" redirectType="Permanent" />
+    <action type="Redirect" url="{2}" redirectType="Permanent" appendQueryString="{3}" />
 </rule>
 '@
 
@@ -120,14 +128,14 @@ foreach ($redirect in $redirects)
 {
     $redirect.UrlsValid = $false
 
-    # skip, if oldurl is invalid
+    # skip, if old url is invalid
     if (!$redirect.OldUrl -or $redirect.OldUrl -notmatch '^https?://')
     {
         $redirect.OldUrlStatus = "Invalid OldUrl"
         continue
     }
 
-    # skip, if newurl is invalid
+    # skip, if new url is invalid
     if (!$redirect.NewUrl -or $redirect.NewUrl -notmatch '^https?://')
     {
         $redirect.NewUrlStatus = "Invalid NewUrl"
@@ -136,19 +144,44 @@ foreach ($redirect in $redirects)
 
     $redirect.UrlsValid = $true
 
-    # set redirect path
-    $redirect.RedirectPath = ($redirect.OldUrl -replace '^https?://[^/]+/', '' -replace '/$', '').Trim()
+    # get old and new path
+    $redirect.OldPath = $redirect.OldUrl -replace '^https?://[^/]+/?', '' -replace '/$', ''
+    $redirect.NewPath = $redirect.NewUrl -replace '^https?://[^/]+/?', '' -replace '/$', ''
+
+    # set urls identical, if old and new path are identical
+    $redirect.UrlsIdentical = $redirect.OldPath -like $redirect.NewPath
+
+    # replace old url domain, if defined
+    if ($oldUrlDomain)
+    {
+        $redirect.OldUrl = $oldUrlDomain + $redirect.OldPath
+    }
+
+    # replace new url domain, if defined
+    if ($newUrlDomain)
+    {
+        $redirect.NewUrl = $newUrlDomain + $redirect.NewPath
+    }
+
+    # strip trailing slash from old and new url
+    $redirect.OldUrl = $redirect.OldUrl -replace '/$', ''
+    $redirect.NewUrl = $redirect.NewUrl -replace '/$', ''
 }
 
 
 # sort redirects by redirect path, so most specific redirects comes first and make list unique
-$redirectsSortedByRedirectPath = $redirects | Sort-Object @{expression={$_.RedirectPath};Ascending=$false} -Unique
+$redirectsSortedByRedirectPath = $redirects | Sort-Object @{expression={$_.OldUrl};Ascending=$false} -Unique
 
 
 # build redirects web config 
 if ($buildRedirectsWebConfig)
 {
-    $redirectsWebConfig = $redirectsWebConfigTemplate -f (($redirectsSortedByRedirectPath | Where-Object { $_.UrlsValid } | Foreach-Object { $rewriteRuleTemplate -f [guid]::NewGuid(), ('^' + $_.RedirectPath), $_.NewUrl -replace '&', '&amp;' }) -join [System.Environment]::NewLine)
+    $validRedirects = @()
+    $validRedirects += $redirectsSortedByRedirectPath | Where-Object { $_.UrlsValid -and !$_.UrlsIdentical }
+
+    Write-Host ("Writing {0} redirects to web.config" -f $validRedirects.Count)
+
+    $redirectsWebConfig = $redirectsWebConfigTemplate -f (($validRedirects | Foreach-Object { $rewriteRuleTemplate -f [guid]::NewGuid(), ('^' + $_.OldPath), ($_.NewUrl -replace '&', '&amp;'), ($_.NewPath -match '\?') }) -join [System.Environment]::NewLine)
     $redirectsWebConfig | Out-File -filepath $redirectsWebConfigFile
 }
 
@@ -161,7 +194,7 @@ if ($checkNewUrls)
         # skip, if urls aren't valid
         if (!$redirect.UrlsValid)
         {
-            $redirect.NewUrlStatus = 'Warning: Url''s not valid, skipped!'
+            $redirect.NewUrlStatus = 'WARNING: Url''s not valid, skipped!'
             continue
         }
 
@@ -174,46 +207,43 @@ if ($checkNewUrls)
 }
 
 
-# check redirect urls
-if ($checkRedirectUrls)
+# check old urls
+if ($checkOldUrls)
 {
-    foreach ($redirect in $redirectsSortedByRedirectPath)
+    foreach ($redirect in $redirects)
     {
         # skip, if urls aren't valid
         if (!$redirect.UrlsValid)
         {
-            $redirect.RedirectTestUrlStatus = 'Warning: Url''s not valid, skipped!'
+            $redirect.RedirectTestUrlStatus = 'WARNING: Url''s not valid, skipped!'
             continue
         }
 
-        # build redirect test url from redirect test domain and redirect path, if redirect test domain is defined. Otherwise use old url.
-        if ($redirectTestDomain)
+        # skip, if urls are identical
+        if ($redirect.UrlsIdentical)
         {
-            $redirectTestUrl = ($redirectTestDomain + $redirect.RedirectPath)
-        }
-        else
-        {
-            $redirectTestUrl = $redirect.OldUrl
+            $redirect.RedirectTestUrlStatus = 'WARNING: Url''s are identical, skipped!'
+            continue
         }
 
-        # add redirect test url column
-        $redirect.RedirectTestUrl = $redirectTestUrl
+        # execute request to check redirect of old url
+        $response = ExecuteRequest -url $redirect.OldUrl
 
-        # execute request to check redirect test url
-        $response = ExecuteRequest -url $redirectTestUrl
+        # add location and status code to redirect
+        $redirect.Location = $response.Location
+        $redirect.StatusCode = $response.StatusCode
 
-        # add redirect test url status column with redirect result
-        if ($redirect.NewUrl -eq $response.Location)
+        # strip trailing slash from response location
+        $location = $response.Location -replace '/$', ''
+
+        # check if location matches new url
+        if ($redirect.StatusCode -eq 301 -and $redirect.NewUrl -like $location)
         {
             $redirect.RedirectTestUrlStatus = "OK"
         }
-        elseif (!$response.Location -or $response.Location -eq '')
-        {
-            $redirect.RedirectTestUrlStatus = ("Error: No redirect with status code " + $response.StatusCode)
-        }
         else
         {
-            $redirect.RedirectTestUrlStatus = ("Error: Redirected to '" + $response.Location + "'")
+            $redirect.RedirectTestUrlStatus = 'ERROR: Response location doesn''t redirect to new url'
         }
     }
 }
