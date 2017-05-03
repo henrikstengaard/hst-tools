@@ -37,6 +37,20 @@ Param(
 )
 
 
+# calculate md5 hash from text
+function CalculateMd5FromText
+{
+    Param(
+        [Parameter(Mandatory=$true)]
+        [string]$text
+    )
+
+    $encoding = [system.Text.Encoding]::UTF8
+	$md5 = new-object -TypeName System.Security.Cryptography.MD5CryptoServiceProvider
+	return [System.BitConverter]::ToString($md5.ComputeHash($encoding.GetBytes($text))).ToLower().Replace('-', '')
+}
+
+
 # execute request
 function ExecuteRequest
 {
@@ -181,7 +195,7 @@ if ($buildRedirectsWebConfig)
 
     Write-Host ("Writing {0} redirects to web.config" -f $validRedirects.Count)
 
-    $redirectsWebConfig = $redirectsWebConfigTemplate -f (($validRedirects | Foreach-Object { $rewriteRuleTemplate -f [guid]::NewGuid(), ('^' + $_.OldPath), ($_.NewUrl -replace '&', '&amp;'), ($_.NewPath -match '\?') }) -join [System.Environment]::NewLine)
+    $redirectsWebConfig = $redirectsWebConfigTemplate -f (($validRedirects | Foreach-Object { $rewriteRuleTemplate -f (CalculateMd5FromText -text $_.OldPath), ('^' + $_.OldPath), ($_.NewUrl -replace '&', '&amp;'), ($_.NewPath -match '\?') }) -join [System.Environment]::NewLine)
     $redirectsWebConfig | Out-File -filepath $redirectsWebConfigFile
 }
 
