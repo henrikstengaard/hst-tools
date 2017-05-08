@@ -1,0 +1,2 @@
+:: Run using VS2015 command prompt
+msbuild BuildDeploymentPackage.msbuild /p:SolutionFile=Website.sln,BuildConfiguration=Release;Machine=PRODWEB01;BuildDir=c:\temp\.build;OutputDir=C:\temp\.release;DeployOnBuild=true;PackageTempRootDir=c:\temp\.package;ReleaseDir=C:\temp\release

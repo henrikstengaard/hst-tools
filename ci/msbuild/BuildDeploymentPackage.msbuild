@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003" DefaultTargets="Build">
+	<!-- From http://msbuildtasks.tigris.org/ -->
+	<Import Project="$(MSBuildExtensionsPath)\MSBuildCommunityTasks\MSBuild.Community.Tasks.Targets" />
+	<Target Name="Build">
+		<MSBuild Projects="$(SolutionFile)" Properties="Configuration=$(BuildConfiguration);Machine=$(Machine);OutDir=$(BuildDir)\$(Machine)\;OutputPath=$(BuildDir)\$(Machine)\;DeployOnBuild=true;PackageTempRootDir=$(BuildDir)\$(Machine)\.package" Condition="$(Machine) != ''"/>
+		<ItemGroup>
+		  <FilesToZip Include="$(BuildDir)\$(Machine)\.package\PackageTmp\**\*.*" Exclude="$(BuildDir)\$(Machine)\.package\PackageTmp\**\SomeDirToExclude\**;"/>
+		</ItemGroup>
+		<MSBuild.Community.Tasks.Zip Files="@(FilesToZip)" WorkingDirectory="$(BuildDir)\$(Machine)\.package\PackageTmp\" ZipFileName="$(ReleaseDir)\$(Machine).zip" ParallelCompression="false" />
+	</Target>
+</Project>
