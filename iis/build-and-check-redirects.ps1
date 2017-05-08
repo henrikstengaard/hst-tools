@@ -37,6 +37,9 @@ Param(
 )
 
 
+Add-Type -AssemblyName System.Web
+
+
 # calculate md5 hash from text
 function CalculateMd5FromText
 {
@@ -103,7 +106,18 @@ $redirectsWebConfigTemplate = @'
 $rewriteRuleTemplate = @'
 <rule name="{0}" stopProcessing="true">
     <match url="{1}" />
-    <action type="Redirect" url="{2}" redirectType="Permanent" appendQueryString="{3}" />
+    <action type="Redirect" url="{2}" redirectType="Permanent" appendQueryString="False" />
+</rule>
+'@
+
+# rewrite rule template
+$rewriteRuleQueryStringTemplate = @'
+<rule name="{0}" stopProcessing="true">
+    <match url="{1}" />
+    <conditions>
+        <add input="{{QUERY_STRING}}" pattern="{2}" />
+    </conditions>    
+    <action type="Redirect" url="{3}" redirectType="Permanent" appendQueryString="False" />
 </rule>
 '@
 
@@ -158,28 +172,84 @@ foreach ($redirect in $redirects)
 
     $redirect.UrlsValid = $true
 
+    # get old and new path and query string
+    $redirect.OldPathAndQueryString = $redirect.OldUrl -replace '^https?://[^/]+/?', '' -replace '/$', ''
+    $redirect.NewPathAndQueryString = $redirect.NewUrl -replace '^https?://[^/]+/?', '' -replace '/$', ''
+
     # get old and new path
-    $redirect.OldPath = $redirect.OldUrl -replace '^https?://[^/]+/?', '' -replace '/$', ''
-    $redirect.NewPath = $redirect.NewUrl -replace '^https?://[^/]+/?', '' -replace '/$', ''
+    $redirect.OldPath = $redirect.OldPathAndQueryString -replace '\?.*$', '' -replace '/$', ''
+    $redirect.NewPath = $redirect.NewPathAndQueryString -replace '\?.*$', '' -replace '/$', ''
+
+    # get old query string
+    if ($redirect.OldPathAndQueryString -match '\?')
+    {
+        $redirect.OldQueryString = $redirect.OldPathAndQueryString -replace '^.*\?', ''
+    }
+    else
+    {
+        $redirect.OldQueryString = ''
+    }
+
+    # get new query string
+    if ($redirect.NewPathAndQueryString -match '\?')
+    {
+        $redirect.NewQueryString = $redirect.NewPathAndQueryString -replace '^.*\?', ''
+    }
+    else
+    {
+        $redirect.NewQueryString = ''
+    }
 
     # set urls identical, if old and new path are identical
-    $redirect.UrlsIdentical = $redirect.OldPath -like $redirect.NewPath
+    $redirect.UrlsIdentical = $redirect.OldPathAndQueryString -like $redirect.NewPathAndQueryString
+
+    # set old path to '/', if empty
+    if (!$redirect.OldPath -or $redirect.OldPath -eq '')
+    {
+        $redirect.OldPath = '/'
+    }
+
+    # set new path to '/', if empty
+    if (!$redirect.NewPath -or $redirect.NewPath -eq '')
+    {
+        $redirect.NewPath = '/'
+    }
 
     # replace old url domain, if defined
     if ($oldUrlDomain)
     {
-        $redirect.OldUrl = $oldUrlDomain + $redirect.OldPath
+        $redirect.OldUrl = ($oldUrlDomain -replace '/$', '') + $redirect.OldPath
     }
 
     # replace new url domain, if defined
     if ($newUrlDomain)
     {
-        $redirect.NewUrl = $newUrlDomain + $redirect.NewPath
+        $redirect.NewUrl = ($newUrlDomain -replace '/$', '') + $redirect.NewPath
     }
 
-    # strip trailing slash from old and new url
-    $redirect.OldUrl = $redirect.OldUrl -replace '/$', ''
-    $redirect.NewUrl = $redirect.NewUrl -replace '/$', ''
+    # add heading slash, if old url doesn't start with https:// or /
+    if ($redirect.OldUrl -notmatch '^(https?://|/)')
+    {
+        $redirect.OldUrl = '/' + $redirect.OldUrl
+    }
+
+    # add heading slash, if new url doesn't start with https:// or /
+    if ($redirect.NewUrl -notmatch '^(https?://|/)')
+    {
+        $redirect.NewUrl = '/' + $redirect.NewUrl
+    }
+
+    # strip trailing slash from old url, if old path doesn't contain slash
+    if ($redirect.OldPath -ne '/')
+    {
+        $redirect.OldUrl = $redirect.OldUrl -replace '/$', ''
+    }
+
+    # strip trailing slash from new url, if new path doesn't contain slash
+    if ($redirect.NewPath -ne '/')
+    {
+        $redirect.NewUrl = $redirect.NewUrl -replace '/$', ''
+    }
 }
 
 
@@ -195,7 +265,21 @@ if ($buildRedirectsWebConfig)
 
     Write-Host ("Writing {0} redirects to web.config" -f $validRedirects.Count)
 
-    $redirectsWebConfig = $redirectsWebConfigTemplate -f (($validRedirects | Foreach-Object { $rewriteRuleTemplate -f (CalculateMd5FromText -text $_.OldPath), ('^' + $_.OldPath), ($_.NewUrl -replace '&', '&amp;'), ($_.NewPath -match '\?') }) -join [System.Environment]::NewLine)
+    $rewriteRules = @()
+
+    foreach ($redirect in $validRedirects)
+    {
+        if ($redirect.OldQueryString -ne '')
+        {
+            $rewriteRules += $rewriteRuleQueryStringTemplate -f (CalculateMd5FromText -text $redirect.OldPathAndQueryString), ('^' + $redirect.OldPath), [System.Web.HttpUtility]::HtmlEncode($redirect.OldQueryString), [System.Web.HttpUtility]::HtmlEncode($redirect.NewUrl)
+        }
+        else
+        {
+            $rewriteRules += $rewriteRuleTemplate -f (CalculateMd5FromText -text $redirect.OldPathAndQueryString), ('^' + $redirect.OldPath), [System.Web.HttpUtility]::HtmlEncode($redirect.NewUrl)
+        }
+    }
+
+    $redirectsWebConfig = $redirectsWebConfigTemplate -f ($rewriteRules -join [System.Environment]::NewLine)
     $redirectsWebConfig | Out-File -filepath $redirectsWebConfigFile
 }
 
