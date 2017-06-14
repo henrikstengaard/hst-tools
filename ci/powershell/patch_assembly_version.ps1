@@ -20,7 +20,7 @@ try
     }
 
     # patch prerelease to last 20 characters, if prerelease exceeds 20 characters
-    if ($prerelease.length -gt 21)
+    if ($prerelease.length -gt 20)
     {
         $prerelease = "-" + $prerelease.Substring($prerelease.length - 20, 20)
     }
