@@ -6,14 +6,35 @@ Param(
 # Use try catch block to ensure script exits with error code, if it fails
 try
 {
-    $nugetArgs = "restore ""{0}""" -f $solutionFile
+    $nugetFile = "%teamcity.tool.NuGet.CommandLine.3.5.0%\tools\nuget.exe"
+    $nugetConfigFile = [System.IO.Path]::Combine([System.IO.Path]::GetDirectoryName($solutionFile), 'nuget.config')
 
-    $process = Start-Process -FilePath "nuget.exe" -ArgumentList $nugetArgs -Wait -NoNewWindow -PassThru
+    $nugetClearArgs = "locals all -clear"
+
+    Write-Output "$nugetFile $nugetClearArgs"
+
+    $process = Start-Process -FilePath $nugetFile -ArgumentList $nugetClearArgs -Wait -NoNewWindow -PassThru
     if ($process.ExitCode -ne 0)
     {
         Write-Error "Failed to restore nuget packages for solution file '$solutionFile'"
-        #Write-Output "##teamcity[buildStatus status='FAILURE']"
-        #exit 1
+        Write-Output "##teamcity[buildStatus status='FAILURE']"
+        exit 1
+    }
+
+    # nuget restore, if nuget config file exists
+    if (Test-Path $nugetConfigFile)
+    {
+        $nugetRestoreArgs = "restore ""{0}"" -ConfigFile ""{1}""" -f $solutionFile, $nugetConfigFile
+
+        Write-Output "$nugetFile $nugetRestoreArgs"
+
+        $process = Start-Process -FilePath $nugetFile -ArgumentList $nugetRestoreArgs -Wait -NoNewWindow -PassThru
+        if ($process.ExitCode -ne 0)
+        {
+            Write-Error "Failed to restore nuget packages for solution file '$solutionFile'"
+            Write-Output "##teamcity[buildStatus status='FAILURE']"
+            exit 1
+        }
     }
 }
 catch
