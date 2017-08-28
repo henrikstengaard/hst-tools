@@ -65,12 +65,14 @@ A Powershell script to build redirects web.config for IIS and can check status o
 Following parameters can be used:
 
 * -redirectsCsvFile "[FILE.CSV]" (Required): Comma-separated file with redirects containing "OldUrl" and "NewUrl" columns.
-* -redirectsReportCsvFile "[FILE.CSV]" (Optional): Comma-separated report file generated for building and checking redirects. If not defined, report file will be same as redirects csv file with ".report.csv" appended.
+* -redirectsReportCsvFile "[FILE.CSV]" (Optional): Comma-separated report file generated for building and checking redirects. If not defined, report file will be same as redirects csv file.
+* -oldUrlDomain "http://www.example.com/" (Optional): This will replace the old urls domain in redirects csv file, if defined.
+* -newUrlDomain "http://www.example.com/" (Optional): This will replace the new urls domain in redirects csv file, if defined.
+with ".report.csv" appended.
 * -buildRedirectsWebConfig (Optional): Switch to enable build redirects web config.
 * -redirectsWebConfigFile "[WEB.CONFIG]" (Optional): Output redirects web config file for IIS. If not defined, redirects web config file will be same as redirects csv file with ".web.config" appended.
 * -checkNewUrls (Optional): Switch to enable checking new urls in redirects csv file.
-* -redirectTestDomain "http://www.example.com/" (Optional): Domain to check old url redirects, which is testing redirects from a local or remote website before deploying web.config to a production website. This will replace the domain in old urls in redirects csv file. If not defined, old url is used to check redirect. 
-* -checkRedirectUrls (Optional): Switch to enable checking old urls in redirects csv file.
+* -checkOldUrls (Optional): Switch to enable checking old urls in redirects csv file.
 
 Redirects csv file example content:
 
@@ -83,17 +85,17 @@ Example 1: Build redirects web config file:
 ###
     > build-and-check-redirects.ps1 -redirectsCsvFile "redirects.csv" -buildRedirectsWebConfig
 
-Example 2: Build redirects web config file with redirects web config file defined:
+Example 2: Build redirects web config file with redirects web config file:
 
 ###
     > build-and-check-redirects.ps1 -redirectsCsvFile "redirects.csv" -buildRedirectsWebConfig -redirectsWebConfigFile "web.config"
 
-Example 3: Check redirect and new urls:
+Example 3: Check new urls:
 
 ###
-    > build-and-check-redirects.ps1 -redirectsCsvFile "redirects.csv" -checkRedirectUrls -checkNewUrls
+    > build-and-check-redirects.ps1 -redirectsCsvFile "redirects.csv" -checkNewUrls
 
-Example 4: Check redirect and new urls with redirect test domain defined:
+Example 4: Check old urls with replaced domain in old and new urls:
 
 ###
-    > build-and-check-redirects.ps1 -redirectsCsvFile "redirects.csv" --redirectTestDomain 'http://www.testdomain.com/' -checkRedirectUrls -checkNewUrls
+    > build-and-check-redirects.ps1 -redirectsCsvFile "redirects.csv" -oldUrlDomain "http://www.example.com/" -newUrlDomain "http://www.example.com/" -checkOldUrls

@@ -180,7 +180,15 @@ try
         # append prerelease to version, if branch is not release or master
         if ($branch -notmatch '^(master|release)')
         {
-            $version += ("-{0}{1}" -f ($branch -replace '[^a-z0-9]', ''), $commitCount)
+            $prerelease = "{0}{1}" -f ($branch -replace '[^a-z0-9]', ''), $commitCount
+
+            # patch prerelease to last 20 characters, if prerelease exceeds 20 characters
+            if ($prerelease.length -gt 20)
+            {
+                $prerelease = $prerelease.Substring($prerelease.length - 20, 20)
+            }            
+
+            $version += "-{0}" -f $prerelease
         }
 
         Write-Output "---------------------------------------------------------------------------------------"
