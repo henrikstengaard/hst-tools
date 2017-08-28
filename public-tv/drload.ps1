@@ -23,6 +23,14 @@ function GetHtml($url)
     $ie.visible = $true
     $ie.navigate($url)
     while($ie.ReadyState -ne 4) {start-sleep -s 1}
+
+    $playElement = $ie.Document.getElementsByTagName('span') | Where-Object { $_.getAttributeNode('class').Value -eq 'dr-icon-play-boxed' } | Select-Object -First 1
+
+    if ($playElement)
+    {
+        $playElement.Click()
+    }
+
     start-sleep -s 10
     $html = $ie.Document.body.parentElement.outerHTML
     $ie.quit()
