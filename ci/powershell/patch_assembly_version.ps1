@@ -1,6 +1,8 @@
 Param(
     [Parameter(Mandatory=$true)]
-	[string]$branch
+    [string]$branch,
+    [Parameter(Mandatory=$true)]
+    [string]$releaseBranches
 )
 
 # Use try catch block to ensure script exits with error code, if it fails
@@ -9,14 +11,14 @@ try
     # get git commit count
     $commitCount = git rev-list HEAD --count
 
-    # set prerelease
-    if ($branch -notmatch '^(master|release)')
+    # set prerelease empty, if branch is a release branch. otherwise set prerelease to branch name
+    if ($branch -match '^master$' -or $branch -match $releaseBranches)
     {
-        $prerelease = ("-{0}{1}" -f ($branch -replace '[^a-z0-9]', ''), $commitCount)
+        $prerelease = ""
     }
     else
     {
-        $prerelease = ""
+        $prerelease = ("-{0}{1}" -f ($branch -replace '[^a-z0-9]', ''), $commitCount)
     }
 
     # patch prerelease to last 20 characters, if prerelease exceeds 20 characters
@@ -24,6 +26,8 @@ try
     {
         $prerelease = "-" + $prerelease.Substring($prerelease.length - 20, 20)
     }
+
+    Write-Host ("prelease = '$prerelease'")
 
     # get module directories
     $moduleDirectories = @()
