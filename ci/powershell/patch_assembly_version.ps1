@@ -18,16 +18,18 @@ try
     }
     else
     {
-        $prerelease = ("-{0}{1}" -f ($branch -replace '[^a-z0-9]', ''), $commitCount)
+        $prerelease = ("{0}{1}" -f ($branch -replace '[^a-z0-9]', ''), $commitCount)
+    
+        # add hyphen and patch prerelease to last 20 characters, if prerelease exceeds 20 characters
+        if ($prerelease.length -gt 20)
+        {
+            $prerelease = "-{0}" -f $prerelease.Substring($prerelease.length - 20, 20)
+        }
+        else
+        {
+            $prerelease = "-{0}" -f $prerelease
+        }
     }
-
-    # patch prerelease to last 20 characters, if prerelease exceeds 20 characters
-    if ($prerelease.length -gt 20)
-    {
-        $prerelease = "-" + $prerelease.Substring($prerelease.length - 20, 20)
-    }
-
-    Write-Host ("prelease = '$prerelease'")
 
     # get module directories
     $moduleDirectories = @()
