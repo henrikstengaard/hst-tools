@@ -44,6 +44,10 @@ function GetMasterVideoResourceUrl($flashVars)
     # get flashvars parameters
     $parameters = [System.Web.HttpUtility]::ParseQueryString([System.Web.HttpUtility]::HtmlDecode($flashVars))
 
+
+    Write-Host $parameters
+    exit
+
     # return null, if program card result parameter doesn't exist
     if (!$parameters.Contains("programcardResult"))
     {
@@ -85,7 +89,7 @@ function GetVideoFilename($masterVideoResourceUrl)
         return $null;
     }
 
-    return '{0}.mp4' -f (($name -replace '-', ' ').Trim() -replace '\s+', '_')
+    return "{0}.mp4" -f ($name -replace '-', ' ').Trim() -replace '\s+', '_'
 }
 
 
@@ -101,8 +105,8 @@ function DownloadVideoResourceUrl($masterVideoResourceUrl, $filename)
     #     exit 1
     # }
 
-    Write-Host $ffmpegFile
-    Write-Host $ffmpegArgs
+    # Write-Host $ffmpegFile
+    # Write-Host $ffmpegArgs
         
     # Setting process invocation parameters.
     $processStartInfo = New-Object -TypeName System.Diagnostics.ProcessStartInfo
@@ -157,14 +161,38 @@ if (!(Test-Path -Path $ffmpegFile))
     exit 1
 }
 
+Write-Host ("Loading html from url '{0}'..." -f $url) -ForegroundColor Yellow
 $html = GetHtml $url;
+Write-Host "Done." -ForegroundColor Green
 
-$flashVars = GetFlashVars $html
+$videoUrl = $html | Select-String -Pattern '<source\s+src="([^"]+)"\s+type="application/x-mpegURL">' -AllMatches | ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value.Trim() } | Select-Object -First 1
 
-$masterVideoResourceUrl = GetMasterVideoResourceUrl $flashVars
+if ($videoUrl)
+{
+    Write-Host ("Detected video url '{0}'" -f $videoUrl) -ForegroundColor Green
+}
+else
+{
+    Write-Host "Video url not found!" -ForegroundColor Red
+    exit
+}
 
-$videoFilename = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath((GetVideoFilename $masterVideoResourceUrl))
+# get video filename from video url
+$videoFilename = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath((GetVideoFilename $videoUrl))
 
-$masterVideoResourceUrl
-$videoFilename
-DownloadVideoResourceUrl $masterVideoResourceUrl $videoFilename
+# find new video filename, if it already exists
+if (Test-Path $videoFilename)
+{
+    $count = 0
+    do
+    {
+        $count++
+        $newVideoFilename = $videoFilename -replace "(\.mp4)$", " ($count)`$1"
+    } while (Test-Path $newVideoFilename)
+    $videoFilename = $newVideoFilename
+}
+
+# download video url to file
+Write-Host ("Downloading video url '{0}' to file '{1}'..." -f $videoUrl, $videoFilename) -ForegroundColor Yellow
+DownloadVideoResourceUrl $videoUrl $videoFilename
+Write-Host "Done." -ForegroundColor Green
