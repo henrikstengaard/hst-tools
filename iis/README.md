@@ -64,8 +64,8 @@ A Powershell script to build redirects web.config for IIS and can check status o
 
 Following parameters can be used:
 
-* -redirectsCsvFile "[FILE.CSV]" (Required): Comma-separated file with redirects containing "OldUrl" and "NewUrl" columns.
-* -redirectsReportCsvFile "[FILE.CSV]" (Optional): Comma-separated report file generated for building and checking redirects. If not defined, report file will be same as redirects csv file.
+* -redirectsCsvFiles "[FILE1.CSV],[FILE2.CSV]" (Required): Comma-separated files with redirects containing "OldUrl" and "NewUrl" columns.
+* -redirectsReportCsvFile "[FILE.CSV]" (Optional): Comma-separated report file generated for building and checking redirects. If not defined, report file will be same as first redirects csv file.
 * -oldUrlDomain "http://www.example.com/" (Optional): This will replace the old urls domain in redirects csv file, if defined.
 * -newUrlDomain "http://www.example.com/" (Optional): This will replace the new urls domain in redirects csv file, if defined.
 with ".report.csv" appended.
@@ -82,23 +82,27 @@ Redirects csv file example content:
 
 Example 1: Build redirects web config file:
 
-###
-    > build-and-check-redirects.ps1 -redirectsCsvFile "redirects.csv" -buildRedirectsWebConfig
+```powershell
+build-and-check-redirects.ps1 -redirectsCsvFiles "redirects.csv" -buildRedirectsWebConfig
+```
 
 Example 2: Build redirects web config file with redirects web config file:
 
-###
-    > build-and-check-redirects.ps1 -redirectsCsvFile "redirects.csv" -buildRedirectsWebConfig -redirectsWebConfigFile "web.config"
+```powershell
+build-and-check-redirects.ps1 -redirectsCsvFiles "redirects.csv" -buildRedirectsWebConfig -redirectsWebConfigFile "web.config"
+```
 
 Example 3: Check new urls:
 
-###
-    > build-and-check-redirects.ps1 -redirectsCsvFile "redirects.csv" -checkNewUrls
+```powershell
+build-and-check-redirects.ps1 -redirectsCsvFiles "redirects.csv" -checkNewUrls
+```
 
 Example 4: Check old urls with replaced domain in old and new urls:
 
-###
-    > build-and-check-redirects.ps1 -redirectsCsvFile "redirects.csv" -oldUrlDomain "http://www.example.com/" -newUrlDomain "http://www.example.com/" -checkOldUrls
+```powershell
+build-and-check-redirects.ps1 -redirectsCsvFiles "redirects.csv" -oldUrlDomain "http://www.example.com/" -newUrlDomain "http://www.example.com/" -checkOldUrls
+```
 
 ## Increase web.config file size limit
 

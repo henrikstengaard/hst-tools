@@ -125,7 +125,7 @@ $rewriteRuleQueryStringTemplate = @'
         <add input="{{HTTP_HOST}}" pattern="^{2}$" />
         <add input="{{QUERY_STRING}}" pattern="{3}" />
         <add input="{{{4}:{{REQUEST_URI}}}}" pattern="(.+)" />
-    </conditions>    
+    </conditions>
     <action type="Redirect" url="{5}" redirectType="Permanent" appendQueryString="True" />
 </rule>
 '@
@@ -155,7 +155,7 @@ foreach($redirectsCsvFile in ($redirectsCsvFiles -split ','))
     {
         $firstRedirectsCsvFile = $redirectsCsvFile
     }
-    
+
     $redirects += Import-Csv -Delimiter ';' $redirectsCsvFile | Foreach-Object { @{ "OldUrl" = $_.OldUrl.Trim(); "NewUrl" = $_.NewUrl.Trim() } }
 }
 
