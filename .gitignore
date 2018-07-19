@@ -1,3 +1,7 @@
+iis/*.csv
+iis/*.xlsx
+iis/*.xml
+iis/*.web.config
 ssl/serial
 ssl/*.key
 ssl/*.cer
