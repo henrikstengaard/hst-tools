@@ -99,3 +99,12 @@ Example 4: Check old urls with replaced domain in old and new urls:
 
 ###
     > build-and-check-redirects.ps1 -redirectsCsvFile "redirects.csv" -oldUrlDomain "http://www.example.com/" -newUrlDomain "http://www.example.com/" -checkOldUrls
+
+## Increase web.config file size limit
+
+When building web.config files with lot of redirects, then can exceed the default file size limit set by IIS.
+
+Increase web.config file size limit to 15MB with following steps for large web.config's:
+
+1. Double-click "iis_max_webconfig_size_15mb.reg" registry file to import it.
+2. Restart IIS to apply web.config file size limit to increased 15MB.
