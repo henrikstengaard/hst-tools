@@ -4,6 +4,8 @@ Param(
     [Parameter(Mandatory=$true)]
     [string]$branch,
     [Parameter(Mandatory=$true)]
+    [string]$releaseBranches,
+    [Parameter(Mandatory=$true)]
     [String]$configuration,
     [Parameter(Mandatory=$true)]
     [String]$nugetOutputDir,
@@ -177,10 +179,10 @@ try
             $version = "1.0.0"
         }
 
-        # append prerelease to version, if branch is not release or master
-        if ($branch -notmatch '^(master|release)')
+        # add prerelease, if branch is a not release branch
+        if (!($branch -match '^master$' -or $branch -match $releaseBranches))
         {
-            $prerelease = "{0}{1}" -f ($branch -replace '[^a-z0-9]', ''), $commitCount
+            $prerelease = ("{0}{1}" -f ($branch -replace '[^a-z0-9]', ''), $commitCount)
 
             # patch prerelease to last 20 characters, if prerelease exceeds 20 characters
             if ($prerelease.length -gt 20)
@@ -190,7 +192,7 @@ try
 
             $version += "-{0}" -f $prerelease
         }
-
+        
         Write-Output "---------------------------------------------------------------------------------------"
         Write-Output ("Building nuget packages for module '{0}'" -f $moduleDirectory.Name)
         Write-Output "---------------------------------------------------------------------------------------"

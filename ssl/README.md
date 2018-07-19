@@ -20,27 +20,37 @@ The generate_ssl_certificate.ps1 script is run from powershell with following pa
 
 - name (required): Name of certificates to generate. This is used to for certificate files generated and display name for certificates.
 - domain (required): Domain the certificate will be generated for. This can be specific eg. "www.domain.local" or wildcard domain "*.domain.local".
+- outputDir (optional): Path to directory with output files eg. "c:\temp\my-certificate".
 - opensslBinPath (optional): Path to directory with openssl.exe file eg. "c:\Program Files\OpenSSL-Win64\bin".
 
 Generate ssl certificate script will attempt to auto detect OpenSSL directory in either root of system drive (typically "C:\") or in Program Files regardless of Win32 or Win64 version installed.
 If auto detection fails, script must be run with -opensslBinPath argument to specify location of OpenSSL bin directory.
 
+When running generate_ssl_certificate.ps1 script it will prompt for a password to create a personal information exchange .pfx export of the domain certificate. This is later used for importing the domain certificate in IIS.
+
 Example 1: Generate self-signed SSL certificate for www.domain.local:
 
-###
-    > generate_ssl_certificate.ps1 -name 'www.domain.com' -domain 'www.domain.local'
+```powershell
+generate_ssl_certificate.ps1 -name 'www.domain.com' -domain 'www.domain.local'
+```
 
 Example 2: Generate self-signed wildcard SSL certificate for *.domain.local:
 
-###
-    > generate_ssl_certificate.ps1 -name 'domain.com' -domain '*.domain.local'
+```powershell
+generate_ssl_certificate.ps1 -name 'domain.com' -domain '*.domain.local'
+```
 
-Example 3: Generate self-signed wildcard SSL certificate for *.domain.local specifying location of openssl:
+Example 3: Generate self-signed wildcard SSL certificate for *.domain.local and specifying location of output directory:
 
-###
-    > generate_ssl_certificate.ps1 -name 'domain.com' -domain '*.domain.local' -opensslBinPath 'c:\Program Files\OpenSSL-Win64\bin'
+```powershell
+generate_ssl_certificate.ps1 -name 'domain.com' -domain '*.domain.local' -outputDir 'c:\temp\domain.local certificate'
+```
 
-As a last step generate_ssl_certificate.ps1 script will prompt for a password to create a personal information exchange .pfx export of the domain certificate. This is later used for importing the domain certificate in IIS.
+Example 4: Generate self-signed wildcard SSL certificate for *.domain.local and specifying location of openssl:
+
+```powershell
+generate_ssl_certificate.ps1 -name 'domain.com' -domain '*.domain.local' -opensslBinPath 'c:\Program Files\OpenSSL-Win64\bin'
+```
 
 ## Certificate files generated
 

@@ -1,5 +1,12 @@
-ssl/serial
-ssl/*.key
-ssl/*.cer
-ssl/*.req
-ssl/*.pfx
+iis/**/*.csv
+iis/**/*.xlsx
+iis/**/*.xml
+iis/**/*.web.config
+ssl/**/serial
+ssl/**/*.key
+ssl/**/*.cer
+ssl/**/*.req
+ssl/**/*.pfx
+ssl/**/*.zip
+ssl/**/*.txt
+ssl/**/*openssl.cfg
