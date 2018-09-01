@@ -1,0 +1,1 @@
+powershell -ExecutionPolicy Bypass -File import-certificates.ps1 -baseDomain "[$BaseDomain]"
