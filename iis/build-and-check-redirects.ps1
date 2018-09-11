@@ -3,7 +3,7 @@
 #
 # Author: Henrik Nørfjand Stengaard
 # Company: First Realize
-# Date: 2018-09-04
+# Date: 2018-09-11
 #
 # A Powershell script to build redirects web.config for IIS and can check status of redirect and new urls after web.config is deployed. 
 # Following parameters can be used:
@@ -33,9 +33,16 @@ Param(
 	[Parameter(Mandatory=$false)]
 	[switch]$checkNewUrls,
 	[Parameter(Mandatory=$false)]
-	[switch]$checkOldUrls
+    [switch]$checkOldUrls,
+    [Parameter(Mandatory=$false)]
+    [switch]$forceOldUrlDomainHost,
+    [Parameter(Mandatory=$false)]
+    [switch]$skipRootRedirects,
+    [Parameter(Mandatory=$false)]
+    [switch]$forceHttp,
+	[Parameter(Mandatory=$false)]
+	[string]$newUrlExcludes
 )
-
 
 Add-Type -AssemblyName System.Web
 
@@ -82,8 +89,11 @@ function ExecuteRequest
         $location = ''
     }
 
-    $response.Close()
-    $response.Dispose()    
+    if ($response)
+    {
+        $response.Close()
+        $response.Dispose()    
+    }
 
     return @{ "StatusCode" = $statusCode; "Location" = $location }
 }
@@ -92,6 +102,9 @@ function ExecuteRequest
 # redirects web config template
 $redirectsWebConfigTemplate = @'
 <configuration>
+    <system.web>
+        <customErrors mode="off" />
+    </system.web>
     <system.webServer>
         <rewrite>
             <rules>
@@ -110,23 +123,9 @@ $rewriteRuleTemplate = @'
 <rule name="{0}" stopProcessing="true">
     <match url="{1}" />
     <conditions>
-        <add input="{{HTTP_HOST}}" pattern="^{2}$" />
-        <add input="{{{3}:{{REQUEST_URI}}}}" pattern="(.+)" />
+{2}
     </conditions>
-    <action type="Redirect" url="{4}" redirectType="Permanent" appendQueryString="True" />
-</rule>
-'@
-
-# rewrite rule template
-$rewriteRuleQueryStringTemplate = @'
-<rule name="{0}" stopProcessing="true">
-    <match url="{1}" />
-    <conditions>
-        <add input="{{HTTP_HOST}}" pattern="^{2}$" />
-        <add input="{{QUERY_STRING}}" pattern="{3}" />
-        <add input="{{{4}:{{REQUEST_URI}}}}" pattern="(.+)" />
-    </conditions>
-    <action type="Redirect" url="{5}" redirectType="Permanent" appendQueryString="True" />
+    <action type="Redirect" url="{3}" redirectType="Permanent" appendQueryString="False" />
 </rule>
 '@
 
@@ -159,13 +158,11 @@ foreach($redirectsCsvFile in ($redirectsCsvFiles -split ','))
     $redirects += Import-Csv -Delimiter ';' $redirectsCsvFile | Foreach-Object { @{ "OldUrl" = $_.OldUrl.Trim(); "NewUrl" = $_.NewUrl.Trim() } }
 }
 
-
 # default redirects report csv file
 if (!$redirectsReportCsvFile)
 {
     $redirectsReportCsvFile = $firstRedirectsCsvFile + '.report.csv'
 }
-
 
 # default redirects web config file
 if ($buildRedirectsWebConfig -and !$redirectsWebConfigFile)
@@ -181,14 +178,30 @@ Write-Host ("Processing " + $redirects.Count + " redirects...") -ForegroundColor
 $oldUrlDomainUri = if ($oldUrlDomain) { [System.Uri]$oldUrlDomain } else { $null }
 $newUrlDomainUri = if ($newUrlDomain) { [System.Uri]$newUrlDomain } else { $null }
 
+$oldDomainsIndex = @{}
+
+
+$newUrlExcludesParsed = @()
+
+if ($newUrlExcludes)
+{
+    $newUrlExcludesParsed += $newUrlExcludes -split ','
+}
 
 foreach ($redirect in $redirects)
 {
-    $redirect.UrlsValid = $false
+    $redirect.OriginalOldUrl = $redirect.OldUrl
+    $redirect.OriginalNewUrl = $redirect.NewUrl
 
+    $redirect.UrlsValid = $false
+    $redirect.OldUrlHasHost = ($redirect.OldUrl -and $redirect.OldUrl -match '^https?://')
+    $redirect.NewUrlHasHost = ($redirect.NewUrl -and $redirect.NewUrl -match '^https?://')
+    
     # add scheme and host to old url
     if ($redirect.OldUrl)
     {
+        $redirect.OldUrl = $redirect.OldUrl -replace '\s+', ''
+
         if ($redirect.OldUrl -match '^([^/\.]+\.[^/\.]+|[^/\.]+\.[^/\.]+\.[^/\.]+)+' -and $redirect.OldUrl -notmatch '^https?://')
         {
             $redirect.OldUrl = $oldUrlDomainUri.Scheme + '://' + $redirect.OldUrl
@@ -202,6 +215,8 @@ foreach ($redirect in $redirects)
     # add scheme and host to new url
     if ($redirect.NewUrl)
     {
+        $redirect.NewUrl = $redirect.NewUrl -replace '\s+', ''
+
         if ($redirect.NewUrl -match '^([^/\.]+\.[^/\.]+|[^/\.]+\.[^/\.]+\.[^/\.]+)+' -and $redirect.NewUrl -notmatch '^https?://')
         {
             $redirect.NewUrl = $newUrlDomainUri.Scheme + '://' + $redirect.NewUrl
@@ -226,18 +241,29 @@ foreach ($redirect in $redirects)
         continue
     }
 
+    if (($newUrlExcludesParsed | Where-Object { $redirect.NewUrl -match $_ }).Count -gt 0)
+    {
+        $redirect.UrlsExcluded = $true
+        continue
+    }
+
     $redirect.UrlsValid = $true
 
     $oldUri = [System.Uri]$redirect.OldUrl
     $newUri = [System.Uri]$redirect.NewUrl
 
+    if (!$oldDomainsIndex.ContainsKey($oldUri.Host))
+    {
+        $oldDomainsIndex[$oldUri.Host] = $true
+    }
+
     # get old and new path and query string
-    $redirect.OldPathAndQueryString = $oldUri.PathAndQuery
-    $redirect.NewPathAndQueryString = $newUri.PathAndQuery
+    $redirect.OldPathAndQueryString = $oldUri.PathAndQuery -replace '/$', ''
+    $redirect.NewPathAndQueryString = $newUri.PathAndQuery -replace '/$', ''
 
     # get old and new path
-    $redirect.OldPath = $oldUri.AbsolutePath
-    $redirect.NewPath = $newUri.AbsolutePath
+    $redirect.OldPath = $oldUri.AbsolutePath -replace '/$', ''
+    $redirect.NewPath = $newUri.AbsolutePath -replace '/$', ''
 
     # get old query string
     $redirect.OldQueryString = $oldUri.Query -replace '^\?', ''
@@ -270,33 +296,11 @@ foreach ($redirect in $redirects)
     {
         $redirect.NewPath = '/'
     }
-
-    # # add heading slash, if old url doesn't start with https:// or /
-    # if ($redirect.OldUrl -notmatch '^(https?://|/)')
-    # {
-    #     $redirect.OldUrl = '/' + $redirect.OldUrl
-    # }
-
-    # # add heading slash, if new url doesn't start with https:// or /
-    # if ($redirect.NewUrl -notmatch '^(https?://|/)')
-    # {
-    #     $redirect.NewUrl = '/' + $redirect.NewUrl
-    # }
-
-    # strip trailing slash from old url, if old path doesn't contain slash
-    # if ($redirect.OldPath -ne '/')
-    # {
-    #     $redirect.OldUrl = $redirect.OldUrl -replace '/$', ''
-    # }
-
-    # # strip trailing slash from new url, if new path doesn't contain slash
-    # if ($redirect.NewPath -ne '/')
-    # {
-    #     $redirect.NewUrl = $redirect.NewUrl -replace '/$', ''
-    # }
-
 }
 
+Write-Host ("excluded redirects: {0}" -f ($redirects | Where-Object { $_.UrlsExcluded }).Count)
+
+Set-Content ($firstRedirectsCsvFile + ".old_domains.txt") -Value ($oldDomainsIndex.Keys | Sort-Object)
 
 # sort redirects by redirect path, so most specific redirects comes first and make list unique
 $redirectsSorted = $redirects | Sort-Object @{expression={$_.OldPathAndQueryString};Ascending=$false}
@@ -305,15 +309,22 @@ $redirectsSorted = $redirects | Sort-Object @{expression={$_.OldPathAndQueryStri
 $redirectsIndex = @{}
 foreach($redirect in $redirectsSorted)
 {
-    $redirect.DuplicateRedirect = $redirectsIndex.ContainsKey($redirect.OldUrl)
+    $oldUrl = $redirect.OldUrl -replace '^https?://', 'http://' -replace '/$', ''
+    $redirect.DuplicateRedirect = $redirectsIndex.ContainsKey($oldUrl)
 
     if ($redirect.DuplicateRedirect)
     {
-        Write-Host ("WARNING: Duplicate redirect '{0}'! First found redirects to '{1}' and duplicate redirects to '{2}'" -f $redirect.OldUrl, $redirectsIndex[$redirect.OldUrl].NewUrl, $redirect.NewUrl) -ForegroundColor Yellow
+        $message = "WARNING: Duplicate redirect '{0}'! First found redirects to '{1}' and duplicate redirects to '{2}'" -f $redirect.OldUrl, $redirectsIndex[$oldUrl].NewUrl, $redirect.NewUrl
+        $redirect.DuplicateStatus = $message
+        Write-Host $message -ForegroundColor Yellow
         continue
     }
+    else
+    {
+        $redirect.DuplicateStatus = ''
+    }
 
-    $redirectsIndex[$redirect.OldUrl] = $redirect
+    $redirectsIndex[$oldUrl] = $redirect
 }
 
 
@@ -329,48 +340,138 @@ if ($buildRedirectsWebConfig)
 
     foreach ($redirect in $validRedirects)
     {
-        if (!$redirect.OldQueryString -or $redirect.OldQueryString -eq '^\s*$')
+        $conditions = @()
+
+        if ($skipRootRedirects -and $redirect.OldPath -eq '/')
         {
-            $rewriteQueryString = $false
-            $rewriteRuleName = "Rewrite rule for '{0}' urls without query string" -f $redirect.OldHost
-            $rewriteId = CalculateMd5FromText -text $rewriteRuleName.ToLower()
-            $rewriteRule = $rewriteRuleTemplate -f `
-                $rewriteRuleName, `
-                '^/.+', `
-                $redirect.OldHost, `
-                $rewriteId, `
-                ('{0}://{1}{{C:1}}' -f $redirect.NewScheme, $redirect.NewHost)
+            continue
+        }
+
+        $oldHost = if ($forceOldUrlDomainHost -and $oldUrlDomainUri) { $oldUrlDomainUri.Host } else { $redirect.OldHost }
+
+        $redirectUrl = if ($redirect.NewUrlHasHost) { '{0}://{1}{{C:1}}' -f $redirect.NewScheme, $redirect.NewHost } else { '{C:1}' }
+        
+
+        # build rewrite key and rule name
+        $rewriteRuleName = "Rewrite rule for "
+
+        if ($redirect.OldPath -eq '/')
+        {
+            $rewriteRuleName += "root url "
         }
         else
         {
-            $rewriteQueryString = $true
-            $rewriteRuleName = "Rewrite rule for '{0}' urls with query string '{1}'" -f $redirect.OldHost, [System.Web.HttpUtility]::HtmlEncode($redirect.OldPathAndQueryString)
-            $rewriteId = CalculateMd5FromText -text $rewriteRuleName.ToLower()
-            $rewriteRule = $rewriteRuleQueryStringTemplate -f `
-                $rewriteRuleName, `
-                ('^' + $redirect.OldPath -replace '^/', ''), `
-                $redirect.OldHost, `
-                [System.Web.HttpUtility]::HtmlEncode($redirect.OldQueryString), `
-                $rewriteId, `
-                ('{0}://{1}{{C:1}}' -f $redirect.NewScheme, $redirect.NewHost)
+            $rewriteRuleName += "urls "
+        }
+
+        $rewriteKey = "OldUrlHost={0}" -f $redirect.OldUrlHasHost
+        if ($redirect.OldUrlHasHost)
+        {
+            $rewriteRuleName += "with host '{0}'" -f $redirect.OldHost
+            $rewriteKey += ",{0}" -f $redirect.OldHost.ToLower()
+        }
+        else
+        {
+            $rewriteRuleName += "on any host"
+        }
+        $rewriteKey += "|NewUrlHost={0}" -f $redirect.NewUrlHasHost
+
+        if ($redirect.NewUrlHasHost)
+        {
+            $rewriteRuleName += " to host '{0}'" -f $redirect.NewHost
+            $rewriteKey += ",{0}" -f $redirect.NewHost.ToLower()
+        }
+        else
+        {
+            $rewriteRuleName += " to same host"
+        }
+
+        # make root redirects unique
+        if ($redirect.OldPath -eq '/')
+        {
+            $rewriteKey += "|{0}" -f $redirect.OldPath
+        }
+
+        $useRewriteMap = $false
+        $useQueryString = $false
+
+        if ($redirect.OldPath -eq '/')
+        {
+            $matchUrl = '^/?$'
+        }
+        elseif (!$redirect.OldQueryString -or $redirect.OldQueryString -eq '^\s*$')
+        {
+            $useRewriteMap = $true
+            $matchUrl = '^(.+?)/?$'
+        }
+        else
+        {
+            $rewriteKey += "|{0}" -f $redirect.OldQueryString
+            $rewriteRuleName += " using query string '{0}'" -f [System.Web.HttpUtility]::HtmlEncode($redirect.OldQueryString)
+
+            $useRewriteMap = $true
+            $useQueryString = $true
+            $matchUrl = '^(.+?)/?$'
+        }
+
+        $rewriteId = CalculateMd5FromText -text $rewriteKey.ToLower()
+        
+        if ($redirect.OldUrlHasHost)
+        {
+            $conditions += '<add input="{{HTTP_HOST}}" pattern="^{0}$" />' -f $oldHost
+        }
+
+        if ($useQueryString)
+        {
+            $conditions += '<add input="{{QUERY_STRING}}" pattern="{0}" />' -f [System.Web.HttpUtility]::HtmlEncode([Regex]::Escape($redirect.OldQueryString))
+        }
+
+        if ($useRewriteMap)
+        {
+            $conditions += '<add input="{{{0}:{{R:1}}}}" pattern="(.+)" />' -f $rewriteId
         }
 
         if (!$rewritesIndex.ContainsKey($rewriteId))
         {
             $rewritesIndex[$rewriteId] = @{
-                'RewriteName' = $rewriteRuleName;
-                'RewriteRule' = $rewriteRule;
-                'RewriteQueryString' = $rewriteQueryString;
-                'RewriteMap' = @{}
+                'Name' = $rewriteRuleName;
+                'MatchUrl' = $matchUrl;
+                'Conditions' = $conditions;
+                'RedirectUrl' = $redirectUrl;
+                'UseQueryString' = $useQueryString;
+                'RewriteMap' = @{};
+                'OldPath' = $redirect.OldPathAndQueryString;
+                'OldUrlHasHost' = $redirect.OldUrlHasHost;
+                'NewUrlHasHost' = $redirect.NewUrlHasHost;
+                'NewUrl' = $redirect.NewUrl
             }
         }
 
         # add rewrite to rewrite rules index
-        $rewritesIndex[$rewriteId].RewriteMap[$redirect.OldPath] = $redirect.NewPathAndQueryString
+        $newPath = $redirect.NewPathAndQueryString
+        if ($newPath -notmatch '^/')
+        {
+            $newPath = '/{0}' -f $newPath
+        }
+        $rewritesIndex[$rewriteId].RewriteMap[($redirect.OldPath -replace '^/', '')] = $newPath
     }
 
+    # update rewrite rules with one entry in rewrite map
+    foreach ($rewriteId in ($rewritesIndex.Keys | Where-Object { $rewritesIndex[$_].RewriteMap.Keys.Count -eq 1 }))
+    {
+        # replace match url with first old path in rewrite map
+        $rewritesIndex[$rewriteId].MatchUrl = '^{0}/?$' -f ($rewritesIndex[$rewriteId].RewriteMap.Keys | Select-Object -First 1)
+
+        # remove rewrite map condition
+        $rewritesIndex[$rewriteId].Conditions = $rewritesIndex[$rewriteId].Conditions | Where-Object { $_ -notmatch $rewriteId }
+        
+        # replace redirect url with new url
+        $rewritesIndex[$rewriteId].RedirectUrl = [System.Web.HttpUtility]::HtmlEncode($rewritesIndex[$rewriteId].NewUrl)
+    }
+
+    # build rewrite maps
     $rewriteMaps = New-Object System.Collections.Generic.List[System.Object]
-    foreach($rewriteId in ($rewritesIndex.Keys | Sort-Object @{expression={$_};Ascending=$false}))
+    foreach($rewriteId in ($rewritesIndex.Keys | Where-Object { $rewritesIndex[$_].RewriteMap.Keys.Count -gt 1 } | Sort-Object @{expression={$_};Ascending=$false}))
     {
         $rewriteMap = $rewriteMapTemplate -f $rewriteId, (($rewritesIndex[$rewriteId].RewriteMap.Keys | `
             Sort-Object @{expression={$_};Ascending=$false} | `
@@ -378,11 +479,27 @@ if ($buildRedirectsWebConfig)
         $rewriteMaps.Add($rewriteMap)
     }
 
-    $rewriteRules += (($rewritesIndex.Keys | Where-Object { $rewritesIndex[$_].RewriteQueryString } | Foreach-Object { $rewritesIndex[$_].RewriteRule }) -join [System.Environment]::NewLine) +
-        (($rewritesIndex.Keys | Where-Object { !$rewritesIndex[$_].RewriteQueryString } | Foreach-Object { $rewritesIndex[$_].RewriteRule }) -join [System.Environment]::NewLine)
+    # sort rewrite index for building rewrite rules
+    $rewriteIndexKeysSorted = @()
+    $rewriteIndexKeysSorted += $rewritesIndex.Keys | Where-Object { $rewritesIndex[$_].UseQueryString } | Sort-Object @{expression={$rewritesIndex[$_].OldPathAndQueryString};Ascending=$false},@{expression={$rewritesIndex[$_].OldUrlHasHost};Ascending=$false},@{expression={$rewritesIndex[$_].NewUrlHasHost};Ascending=$false}
+    $rewriteIndexKeysSorted += $rewritesIndex.Keys | Where-Object { !$rewritesIndex[$_].UseQueryString } | Sort-Object @{expression={$rewritesIndex[$_].OldPathAndQueryString};Ascending=$false},@{expression={$rewritesIndex[$_].OldUrlHasHost};Ascending=$false},@{expression={$rewritesIndex[$_].NewUrlHasHost};Ascending=$false}
+
+    # build rewrite rules
+    $rewriteRules = New-Object System.Collections.Generic.List[System.Object]
+    foreach($rewriteId in $rewriteIndexKeysSorted)
+    {
+        $rewrite = $rewritesIndex[$rewriteId]
+
+        $rewriteRule = $rewriteRuleTemplate -f `
+            $rewrite.Name, `
+            $rewrite.MatchUrl, `
+            ($rewrite.Conditions -join [System.Environment]::NewLine), `
+            $rewrite.RedirectUrl
+        $rewriteRules.Add($rewriteRule)
+    }
 
     $redirectsWebConfig = $redirectsWebConfigTemplate -f `
-        $rewriteRules, `
+        ($rewriteRules -join [System.Environment]::NewLine), `
         ($rewriteMaps -join [System.Environment]::NewLine),
     $redirectsWebConfig | Out-File -filepath $redirectsWebConfigFile
 }
@@ -425,7 +542,10 @@ if ($checkNewUrls)
 # check old urls
 if ($checkOldUrls)
 {
-    foreach ($redirect in $redirects)
+    $responseIndex = @{}
+
+    Write-Host "Checking old urls..." -ForegroundColor Yellow
+    foreach ($redirect in $redirectsSorted)
     {
         # skip, if urls aren't valid
         if (!$redirect.UrlsValid)
@@ -441,31 +561,147 @@ if ($checkOldUrls)
             continue
         }
 
+        # force old url domain for old url
+        if ($forceOldUrlDomainHost -and $oldUrlDomainUri)
+        {
+            $oldPath = $redirect.OldPathAndQueryString
+            $redirect.OldUrl = (New-Object -TypeName 'System.Uri' -ArgumentList $oldUrlDomainUri, $oldPath).AbsoluteUri
+        }
+
+        # force http
+        if ($forceHttp)
+        {
+            $redirect.OldUrl = $redirect.OldUrl -replace '^https?://', 'http://'
+        }
+
         # execute request to check redirect of old url
         $response = ExecuteRequest -url $redirect.OldUrl
 
         # add location and status code to redirect
         $redirect.Location = $response.Location
         $redirect.StatusCode = $response.StatusCode
+        
+        # cyclic redirect check of response location
+        $redirectSession = @{ $redirect.OldUrl = $true }
+        $redirectCount = 0
+        $cyclicRedirect = $false
+        $url = $response.Location
+        $urlsVisited = New-Object System.Collections.Generic.List[System.Object]
+        $urlsVisited.Add($redirect.OldUrl)
+        do {
+            if (!$url)
+            {
+                break;
+            }
 
-        # strip trailing slash from response location
-        $location = $response.Location -replace '/$', ''
+            $redirectCount++
+            $url = $url.ToLower() -replace '/$', ''
+            $cyclicRedirect = $redirectSession.ContainsKey($url)
+
+            if (!$cyclicRedirect)
+            {
+                $urlsVisited.Add($url)
+            }
+
+            $redirectSession[$url] = $true
+
+            if ($responseIndex.ContainsKey($url))
+            {
+                $response = $responseIndex[$url]
+            }
+            else
+            {
+                if (!$url)
+                {
+                    Write-Host ("redirect result in null: {0}" -f ($urlsVisited -join ','))
+                }
+                $response = ExecuteRequest -url $url
+
+                $responseIndex[$url] = $response
+            }
+            
+            $urlHasRedirect = $response -and $response.StatusCode -eq 301 -and $response.Location
+            if ($urlHasRedirect)
+            {
+                $oldU = $url
+                $url = $response.Location
+                $urlsVisited.Add($oldU + '=>' + $url)
+            }
+            else
+            {
+                $urlsVisited.Add('no url to follow')
+            }
+        } while ($urlHasRedirect -and !$cyclicRedirect -and $redirectCount -lt 20)
+
+        if ($cyclicRedirect)
+        {
+            Write-Host ("cyclic redirect: {0}" -f ($urlsVisited -join ','))
+            $redirect.RedirectTestUrlStatus = "ERROR: Cyclic redirect detect in urls '{0}'" -f ($urlsVisited -join ',')
+            continue
+        }
+        
+        if ($redirectCount -ge 20)
+        {
+            $redirect.RedirectTestUrlStatus = "ERROR: Too many redirects"
+            continue
+        }
+
+        # strip trailing slash from new url and response location
+        $newUrl = $redirect.NewUrl -replace '/$', '' -replace '^https?://', 'https://'
+        $location = $redirect.Location -replace '/$', '' -replace '^https?://', 'https://'
 
         # check if location matches new url
-        if ($redirect.StatusCode -eq 301 -and $redirect.NewUrl -like $location)
+        $urlRedirect = $false
+        $locationEqual = $false
+        if ($redirect.StatusCode -eq 301)
         {
-            $redirect.RedirectTestUrlStatus = "OK"
+            $urlRedirect = $true
+
+            if ($redirect.NewUrlHasHost)
+            {
+                $locationEqual = $newUrl -like $location
+
+                if (!$locationEqual)
+                {
+                    $newUrl = $newUrl -replace '^https?://', ''
+                    $location = $location -replace '^https?://', ''
+
+                    $locationEqual = $newUrl -like $location
+                }
+            }
+            else
+            {
+                $locationUri = [System.Uri]$location
+                $locationEqual = $redirect.NewPathAndQueryString -like $locationUri.PathAndQuery
+            }
+        }
+
+        if ($urlRedirect)
+        {
+            if ($locationEqual)
+            {
+                Write-Host -NoNewline "."
+                $redirect.RedirectTestUrlStatus = "OK"
+            }
+            else
+            {
+                Write-Host -NoNewline "!"
+                $redirect.RedirectTestUrlStatus = 'ERROR: Response location doesn''t redirect to new url'
+            }
         }
         else
         {
-            $redirect.RedirectTestUrlStatus = 'ERROR: Response location doesn''t redirect to new url'
+            Write-Host -NoNewline "x"
+            $redirect.RedirectTestUrlStatus = 'ERROR: Response doesn''t redirect'
         }
+
     }
+    Write-Host ""
+    Write-Host "Done" -ForegroundColor Green
 }
 
 
 # write redirects report csv file
+Write-Host "Writing redirects repost csv '$redirectsReportCsvFile'..." -ForegroundColor Yellow
 $redirectsSorted | ForEach-Object { New-Object PSObject -Property $_ } | export-csv -delimiter ';' -path $redirectsReportCsvFile -NoTypeInformation -Encoding UTF8
-
-# done
 Write-Host "Done" -ForegroundColor "Green"
