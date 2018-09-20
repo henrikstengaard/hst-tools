@@ -112,3 +112,21 @@ Increase web.config file size limit to 15MB with following steps for large web.c
 
 1. Double-click "iis_max_webconfig_size_15mb.reg" registry file to import it.
 2. Restart IIS to apply web.config file size limit to increased 15MB.
+
+Verify registry changes with following commands:
+
+1. Run command prompt.
+2. Type <code>reg query "HKLM\SOFTWARE\Microsoft\InetStp\Configuration" /v "MaxWebConfigFileSizeInKB"</code> and press enter.
+3. Verify command returns output:
+```
+HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\InetStp\Configuration
+    MaxWebConfigFileSizeInKB    REG_DWORD    0x3a98
+```
+4. Type <code>reg query "HKLM\SOFTWARE\Wow6432Node\Microsoft\InetStp\Configuration" /v "MaxWebConfigFileSizeInKB"</code> and press enter.
+5. Verify command returns output:
+```
+HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\Microsoft\InetStp\Configuration
+    MaxWebConfigFileSizeInKB    REG_DWORD    0x3a98
+```
+
+
