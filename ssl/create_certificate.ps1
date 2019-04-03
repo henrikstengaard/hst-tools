@@ -49,6 +49,24 @@ function AutoDetectedOpensslBinPath()
 	}
 }
 
+# get script dir
+$scriptDir = split-path -parent $MyInvocation.MyCommand.Definition
+
+# elevate script, if not run as administrator
+If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))
+{   
+    $arguments = "& '{0}' -rootCaName '{1}' -domainDnsName '{2}'" -f $myinvocation.mycommand.definition, $rootCaName, $domainDnsName
+    if ($outputDir)
+    {
+        $arguments += " -outputDir '{0}'" -f $outputDir
+    }
+    if ($opensslBinPath)
+    {
+        $arguments += " -opensslBinPath '{0}'" -f $opensslBinPath
+    }
+	Start-Process powershell -Verb runAs -WorkingDirectory "$scriptDir" -ArgumentList $arguments
+	Break
+}
 
 # autodetect openssl bin path, if parameter is not defined
 if (!$opensslBinPath)
@@ -97,6 +115,10 @@ if (!$rootCaCert)
 
     Write-Output 'Done'
 }
+else
+{
+    Write-Output ('''{0}'' root ca certificate is already created in local computer certificates' -f $rootCaDnsName)
+}
 
 
 # root ca filename
@@ -117,11 +139,15 @@ $rootCaCertFile = Join-Path $outputRootCaDir -ChildPath ('{0}.cer' -f $rootCaCer
 # export root ca cert, if root ca cert file doesn't exist
 if (!(Test-Path $rootCaCertFile))
 {
-    Write-Output ('Exporting ''{0}'' root ca certificate to file ''{1}''' -f $rootCaName, $rootCaCertFile)
+    Write-Output ('Exporting ''{0}'' root ca certificate to file ''{1}''' -f $rootCaDnsName, $rootCaCertFile)
 
     Export-Certificate -Cert $rootCaCert -FilePath $rootCaCertFile | Out-Null
 
     Write-Output 'Done'
+}
+else
+{
+    Write-Output ('''{0}'' root ca certificate is already exported to file ''{1}''' -f $rootCaDnsName, $rootCaCertFile)
 }
 
 
@@ -134,6 +160,10 @@ if (!$rootCaCertTrusted)
     Import-Certificate -CertStoreLocation 'Cert:\LocalMachine\Root' -FilePath $rootCaCertFile | Out-Null
 
     Write-Output 'Done'
+}
+else
+{
+    Write-Output ('''{0}'' root ca certificate is already imported in trusted root certification authorities' -f $rootCaName)
 }
 
 
@@ -180,6 +210,10 @@ if (!$domainCert)
 
     Write-Output 'Done'
 }
+else
+{
+    Write-Output ('''{0}'' domain certificate is already created in local computer certificates' -f $domainDnsName)
+}
 
 
 # domain cert file
@@ -195,6 +229,10 @@ if (!(Test-Path $domainPfxFile))
 
     Write-Output 'Done'
 }
+else
+{
+    Write-Output ('''{0}'' domain pfx certificate is already exported to file ''{1}''' -f $domainDnsName, $domainPfxFile)
+}
 
 # exit, if openssl exe doesn't exist
 if (!$opensslExeFile)
@@ -209,7 +247,7 @@ if (!$opensslExeFile)
 $rootCaPemFile = Join-Path $outputRootCaDir -ChildPath ('{0}.pem' -f $rootCaCertFileName)
 if (!(Test-Path $rootCaPemFile))
 {
-    Write-Output ('Creating ''{0}'' root ca pem to file ''{1}''' -f $rootCaDnsName, $rootCaPemFile)
+    Write-Output ('Exporting ''{0}'' root ca pem to file ''{1}''' -f $rootCaDnsName, $rootCaPemFile)
 
     $opensslArgs = ('x509 -inform der -in "{0}" -out "{1}"' -f $rootCaCertFile, $rootCaPemFile)
     $opensslProcess = Start-Process $opensslExeFile $opensslArgs -Wait -Passthru -NoNewWindow
@@ -220,13 +258,17 @@ if (!(Test-Path $rootCaPemFile))
     }
     Write-Output 'Done'
 }
+else
+{
+    Write-Output ('''{0}'' root ca pem is already exported to file ''{1}''' -f $rootCaDnsName, $rootCaPemFile)
+}
 
 
 # domain private key pem file
 $domainPrivateKeyPemFile = Join-Path $outputDomainDnsDir -ChildPath ('{0}_key.pem' -f $domainDnsFileName)
 if (!(Test-Path $domainPrivateKeyPemFile))
 {
-    Write-Output ('Creating ''{0}'' domain private key pem to file ''{1}''' -f $domainDnsName, $domainPrivateKeyPemFile)
+    Write-Output ('Exporting ''{0}'' domain private key pem to file ''{1}''' -f $domainDnsName, $domainPrivateKeyPemFile)
 
     $opensslArgs = ('pkcs12 -in "{0}" -nocerts -out "{1}" -password pass:{2} -nodes' -f $domainPfxFile, $domainPrivateKeyPemFile, $domainPfxPassword)
     $opensslProcess = Start-Process $opensslExeFile $opensslArgs -Wait -Passthru -NoNewWindow
@@ -237,13 +279,17 @@ if (!(Test-Path $domainPrivateKeyPemFile))
     }
     Write-Output 'Done'
 }
+else
+{
+    Write-Output ('''{0}'' domain private key pem is already exported to file ''{1}''' -f $domainDnsName, $domainPrivateKeyPemFile)
+}
 
 
 # domain private key file
 $domainPrivateKeyFile = Join-Path $outputDomainDnsDir -ChildPath ('{0}.key' -f $domainDnsFileName)
 if (!(Test-Path $domainPrivateKeyFile))
 {
-    Write-Output ('Creating ''{0}'' domain private key to file ''{1}''' -f $domainDnsName, $domainPrivateKeyFile)
+    Write-Output ('Exporting ''{0}'' domain private key to file ''{1}''' -f $domainDnsName, $domainPrivateKeyFile)
 
     $opensslArgs = ('rsa -in "{0}" -out "{1}"' -f $domainPrivateKeyPemFile, $domainPrivateKeyFile)
     $opensslProcess = Start-Process $opensslExeFile $opensslArgs -Wait -Passthru -NoNewWindow
@@ -254,6 +300,10 @@ if (!(Test-Path $domainPrivateKeyFile))
     }
 
     Write-Output 'Done'
+}
+else
+{
+    Write-Output ('''{0}'' domain private key is already exported to file ''{1}''' -f $domainDnsName, $domainPrivateKeyFile)
 }
 
 
@@ -272,6 +322,10 @@ if (!(Test-Path $domainPemFile))
     }
 
     Write-Output 'Done'
+}
+else
+{
+    Write-Output ('''{0}'' domain pem is already exported to file ''{1}''' -f $domainDnsName, $domainPemFile)
 }
 
 
@@ -292,3 +346,12 @@ if (!(Test-Path $domainCrtFile))
 
     Write-Output 'Done'
 }
+else
+{
+    Write-Output ('''{0}'' domain crt is already exported to file ''{1}''' -f $domainDnsName, $domainCrtFile)
+}
+
+
+# pause
+Write-Host "Press any key to continue ..."
+$host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") | Out-Null
