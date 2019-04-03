@@ -146,6 +146,14 @@ if ($process.ExitCode -ne 0)
 	Write-Error "Failed to run '$opensslExeFile' with args '$opensslArgs'"
 	exit 1
 }
+$caPemFile = [System.IO.Path]::Combine($outputDir, $name + " CA.pem")
+$opensslArgs = "x509 -in ""$caCerFile"" -out ""$caPemFile"" -outform PEM"
+$process = Start-Process $opensslExeFile $opensslArgs -Wait -Passthru -NoNewWindow
+if ($process.ExitCode -ne 0)
+{
+	Write-Error "Failed to run '$opensslExeFile' with args '$opensslArgs'"
+	exit 1
+}
 Write-Host "Done."
 
 
@@ -188,6 +196,15 @@ if ($process.ExitCode -ne 0)
 	Write-Error "Failed to run '$opensslExeFile' with args '$opensslArgs'"
 	exit 1
 }
+$domainPemFile = [System.IO.Path]::Combine($outputDir, $name + ".pem")
+$opensslArgs = "x509 -in ""$domainCerFile"" -out ""$domainPemFile"" -outform PEM"
+$process = Start-Process $opensslExeFile $opensslArgs -Wait -Passthru -NoNewWindow
+if ($process.ExitCode -ne 0)
+{
+	Write-Error "Failed to run '$opensslExeFile' with args '$opensslArgs'"
+	exit 1
+}
+
 Write-Host "Done."
 
 
