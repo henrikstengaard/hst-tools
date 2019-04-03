@@ -8,5 +8,6 @@ ssl/**/*.cer
 ssl/**/*.req
 ssl/**/*.pfx
 ssl/**/*.zip
+ssl/**/*.pem
 ssl/**/*.txt
 ssl/**/*openssl.cfg
